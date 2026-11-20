@@ -7,3 +7,4 @@ build/
 dist/
 *.part
 .DS_Store
+.venv-web/

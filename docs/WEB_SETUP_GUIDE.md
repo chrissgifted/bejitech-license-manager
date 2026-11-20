@@ -1,4 +1,36 @@
-# Putting the web version online (Render + Namecheap)
+# Running the web version
+
+## Option A: on your Mac first (free, no accounts needed)
+
+The app runs on your Mac and you open it in a browser: on the Mac itself, and on your phone or tablet
+when they're on the same Wi-Fi. When the Mac is off or asleep, the app is off too.
+
+1. Install Python 3.12 or newer from <https://www.python.org/downloads/> (skip if you already did for the
+   desktop app).
+2. Go to <https://github.com/chrissgifted/bejitech-license-manager>, click the green **Code** button and choose
+   **Download ZIP**. Double-click the ZIP in Downloads to unpack it.
+3. Open the unpacked folder and double-click **Start Bejitech Web.command**.
+   If macOS says it can't be opened: right-click it → **Open** → **Open**.
+   If macOS asks whether Python may accept incoming connections, click **Allow** (needed for your phone).
+4. A Terminal window opens. The first time it takes a minute or two, then shows:
+   - the address for this Mac: **http://localhost:8000**
+   - the address for your phone, like **http://192.168.1.23:8000**
+   - the **setup code** you need once.
+5. Open http://localhost:8000 in Safari or Chrome. Create the administrator (setup code, name, username,
+   password, recovery passphrase) and turn on two-step login with Google or Microsoft Authenticator.
+6. Leave the Terminal window open while you use the app. To stop it, press **Ctrl + C** in that window.
+   To start again later, double-click **Start Bejitech Web.command** again.
+
+Your web data and secret keys are kept in the **BejitechWeb** folder in your home folder (separate from
+the desktop app's data). Keep a copy of the file **BejitechWeb/web.env** somewhere safe: it holds the key
+that unlocks your licence keys. Only use the phone address on your own Wi-Fi at home or the office, not on
+public Wi-Fi.
+
+Terminal alternative to step 3: `cd ~/Downloads/bejitech-license-manager-main && bash scripts/run_web_local.sh`
+
+---
+
+# Option B: putting the web version online (Render + Namecheap)
 
 This guide takes about 30 minutes. You do steps 1, 2, 4 and 5 (they need your own accounts and card);
 I do step 3 (putting the code on GitHub). At the end the app opens at **https://app.bejitech.com** on any
