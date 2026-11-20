@@ -34,7 +34,7 @@
       <td class="num" data-label="Allocated">{{ r.allocated_qty }}</td>
       <td class="num" data-label="Confirmed">{{ r.confirmed_qty }}</td>
       <td class="num" data-label="Remaining"><strong>{{ r.remaining_qty }}</strong></td>
-      <td class="nowrap" data-label="Expires">{{ display_date(r.expiration_date) }}</td>
+      <td class="nowrap" data-label="Expires">{{ expiry_label(r.expiration_date) }}</td>
       <td data-label="State"><span class="state s-{{ r.stock_state | lower }}">{{ state_label(r.stock_state) }}</span></td>
     </tr>
   {% else %}
@@ -48,7 +48,7 @@
 <section class="card detail" id="detail">
   <h2>{{ sel.inventory_ref }} · {{ sel.product_name }} · <span class="mono">{{ revealed.key if revealed else sel.masked_key }}</span></h2>
   <p class="muted">Supplier: {{ sel.supplier or '—' }} · Bought {{ display_date(sel.purchase_date) }} for {{ format_money(sel.purchase_cost_tzs) }}{% if sel.purchase_currency == 'USD' %} ({{ format_money(sel.purchase_cost_minor, 'USD') }} @ {{ sel.exchange_rate_to_tzs }}){% endif %}
-    · Multi-customer: {{ 'Yes' if sel.allows_multiple_customers else 'No' }} · Reassignable: {{ 'Yes' if sel.reassignable else 'No' }} · Expires: {{ display_date(sel.expiration_date) }}
+    · Multi-customer: {{ 'Yes' if sel.allows_multiple_customers else 'No' }} · Reassignable: {{ 'Yes' if sel.reassignable else 'No' }} · Expires: {{ expiry_label(sel.expiration_date) }}
     {% if sel.restrictions %} · Restrictions: {{ sel.restrictions }}{% endif %}
     {% if sel.status == 'DISABLED' %} · <strong class="bad-text">Disabled: {{ sel.disabled_reason }}</strong>{% endif %}</p>
   {% if sel.notes %}<p class="small">Notes: {{ sel.notes }}</p>{% endif %}

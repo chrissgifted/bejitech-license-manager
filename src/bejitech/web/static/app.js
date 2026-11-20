@@ -127,6 +127,14 @@
       }
       showHint();
     }
+    const lifetime = $("[data-lifetime]", form), expRow = $("[data-expiry-row]", form);
+    if (lifetime && expRow) {
+      const syncExp = function () {
+        expRow.hidden = lifetime.value === "lifetime";
+        if (expRow.hidden) $("[data-expiry]", form).value = "";
+      };
+      lifetime.addEventListener("change", syncExp); syncExp();
+    }
     if (currency && rateRow) {
       const sync = function () { rateRow.hidden = currency.value !== "USD"; };
       currency.addEventListener("change", sync); sync();

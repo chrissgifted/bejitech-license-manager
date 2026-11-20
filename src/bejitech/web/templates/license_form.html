@@ -44,7 +44,10 @@
       <label data-rate-row>USD → TZS rate<input name="rate" inputmode="decimal" value="{{ form.rate or '' }}"></label>
       <label>Permitted activations *<input type="number" name="capacity" min="1" value="{{ form.capacity or 1 }}" required data-capacity></label>
       {% endif %}
-      <label>Expiry date<input type="date" name="expiry" value="{{ form.expiry or '' }}"></label>
+      <label>Validity<select name="validity" data-lifetime>
+        <option value="lifetime" {{ 'selected' if not form.expiry }}>Lifetime (never expires)</option>
+        <option value="date" {{ 'selected' if form.expiry }}>Expires on a date</option></select></label>
+      <label data-expiry-row {{ 'hidden' if not form.expiry }}>Expiry date<input type="date" name="expiry" value="{{ form.expiry or '' }}" data-expiry></label>
       <label>Restrictions<input name="restrictions" value="{{ form.restrictions or '' }}" placeholder="e.g. Windows only, Tanzania region, one PC"></label>
     </div>
     <label class="check"><input type="checkbox" name="multi" value="1" {{ 'checked' if form.multi }} data-multi> Can be shared by several customers</label>

@@ -71,6 +71,7 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
         "payment_label": lambda v: PaymentMethod(v).label if v in PaymentMethod.__members__ else v,
         "state_label": lambda v: StockState(v).label if v in StockState.__members__ else v,
         "money_input": _money_input, "quote": quote,
+        "expiry_label": lambda v: display_date(v) if v else "Lifetime",
     }
 
     def page(request: Request, name: str, status: int = 200, **kw) -> HTMLResponse:
@@ -256,13 +257,15 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
         lic = ctx.inventory.get_license(lid) if lid else None
         form = dict(f)
         form["multi"], form["reassign"] = bool(f.get("multi")), bool(f.get("reassign"))
+        if f.get("validity") == "lifetime":
+            form["expiry"] = ""  # lifetime activation: no expiry date
         try:
             product_id = _int(f.get("product_id"))
             type_id = _opt_int(f.get("license_type_id"))
             if lic:
                 ctx.inventory.update_license(
                     lid, supplier_name=str(f.get("supplier", "")), restrictions=str(f.get("restrictions", "")),
-                    expiration_date=str(f.get("expiry", "")), notes=str(f.get("notes", "")),
+                    expiration_date=str(form.get("expiry", "")), notes=str(f.get("notes", "")),
                     allows_multiple_customers=form["multi"], reassignable=form["reassign"],
                     product_id=product_id or None, license_type_id=type_id)
                 flash(request, f"Saved {lic.inventory_ref}.")
@@ -276,7 +279,7 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
                 purchase_currency=cur, exchange_rate_to_tzs=str(f.get("rate", "1")) if cur == "USD" else "1",
                 supplier_name=str(f.get("supplier", "")), allows_multiple_customers=form["multi"],
                 reassignable=form["reassign"], restrictions=str(f.get("restrictions", "")),
-                expiration_date=str(f.get("expiry", "")), notes=str(f.get("notes", "")))
+                expiration_date=str(form.get("expiry", "")), notes=str(f.get("notes", "")))
             prod = ctx.catalogue.get_product(product_id)
             if type_id and type_id != prod.license_type_id:
                 tmpl.product_id = ctx.catalogue.variant_for_type(product_id, type_id)

@@ -231,3 +231,5 @@ label.block { margin: 10px 0; }
   .pop-body { position: static; width: auto; margin-top: 6px; box-shadow: none; }
   .head-actions { width: 100%; }
 }
+
+[hidden] { display: none !important; }

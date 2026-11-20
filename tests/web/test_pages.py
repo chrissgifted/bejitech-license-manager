@@ -157,3 +157,19 @@ def test_pages_need_sign_in(client):
     for url in ("/products", "/inventory", "/sales", "/reports", "/settings", "/api/recommend"):
         r = client.get(url)
         assert r.status_code in (303, 401), url
+
+
+def test_lifetime_keys_and_keys_with_an_expiry_date(client):
+    setup_admin(client)
+    pid = product_id(client)
+    form = client.get("/inventory/new").text
+    assert '<option value="lifetime" selected' in form  # new keys default to lifetime
+    client.post("/inventory/save", data={"csrf": csrf(form), "product_id": pid, "keys": "LIFE1-AAAAA-BBBBB-CCCCC-11111",
+                                         "purchase_date": "2026-11-01", "currency": "TZS", "capacity": "1",
+                                         "validity": "lifetime", "expiry": "2027-01-01"})
+    client.post("/inventory/save", data={"csrf": token(client, "/inventory/new"), "product_id": pid,
+                                         "keys": "YEAR1-AAAAA-BBBBB-CCCCC-22222", "purchase_date": "2026-11-01",
+                                         "currency": "TZS", "capacity": "1", "validity": "date", "expiry": "2027-11-01"})
+    inv = client.get("/inventory").text
+    assert "Lifetime" in inv and "01 Nov 2027" in inv
+    assert "2027-01-01" not in inv and "01 Jan 2027" not in inv
