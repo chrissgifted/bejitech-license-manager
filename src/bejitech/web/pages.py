@@ -358,7 +358,7 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
 
     # ======================= Customers =======================
     @app.get("/customers", response_class=HTMLResponse)
-    def customers(request: Request, q: str = "", archived: int = 0, id: int = 0, owing: int = 0):
+    def customers(request: Request, q: str = "", archived: int = 0, id: int = 0, owing: int = 0, voided: int = 0):
         ctx = ctx_of(request)
         rows = ctx.customers.list(search=q.strip(), include_archived=bool(archived))
         balances = ctx.accounts.balances()
@@ -372,7 +372,7 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
             except BejitechError:
                 sel = None
         return page(request, "customers.html", rows=rows, q=q, archived=archived, sel=sel, hist=hist, acc=acc,
-                    reminder=reminder,
+                    reminder=reminder, voided=voided,
                     balances=balances, owing=owing, total_owed=sum(b for b in balances.values() if b > 0),
                     methods=[(m.value, m.label) for m in PaymentMethod], today=today_iso())
 
@@ -463,6 +463,18 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
         except BejitechError as exc:
             flash(request, str(exc), "error")
         return back_to(f, f"/customers?id={cid}")
+
+    @app.post("/customers/entries/{eid}/edit")
+    async def customer_entry_edit(request: Request, eid: int):
+        ctx = ctx_of(request)
+        f = await posted(request)
+        try:
+            ctx.accounts.update_entry(eid, to_minor(f.get("amount", ""), "TZS"), str(f.get("date", "")),
+                                      str(f.get("note", "")), f.get("reference"))
+            flash(request, "Entry updated.")
+        except BejitechError as exc:
+            flash(request, str(exc), "error")
+        return back_to(f, "/customers")
 
     @app.post("/customers/entries/{eid}/void")
     async def customer_entry_void(request: Request, eid: int):

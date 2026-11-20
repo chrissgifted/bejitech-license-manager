@@ -96,7 +96,8 @@
   <h3>Account statement</h3>
   <div class="table-wrap"><table class="data stackable compact">
     <thead><tr><th>Date</th><th>Description</th><th class="num">Charged</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr></thead>
-    <tbody>{% for l in acc.lines %}
+    {% set n_void = acc.lines | selectattr('is_void') | list | length %}
+    <tbody>{% for l in acc.lines if voided or not l.is_void %}
       <tr class="{{ 'void' if l.is_void }}">
         <td class="nowrap" data-label="Date">{{ display_date(l.date) }}</td>
         <td data-label="Description">{% if l.sale_id and l.kind == 'SALE' %}<a href="/sales?id={{ l.sale_id }}">{{ l.description }}</a>{% else %}{{ l.description }}{% endif %}
@@ -105,6 +106,14 @@
         <td class="num" data-label="Paid">{{ format_money(l.payment_minor) if l.payment_minor else '' }}</td>
         <td class="num" data-label="Balance">{{ format_money(l.balance_minor) }}</td>
         <td class="row-actions">{% if l.entry_id and not l.is_void %}
+          <details class="pop"><summary class="btn small">Edit…</summary>
+            <form method="post" action="/customers/entries/{{ l.entry_id }}/edit" class="pop-body">
+              {{ csrf_field(csrf) }}<input type="hidden" name="next" value="{{ nxt }}">
+              <label>Amount (TZS)<input name="amount" inputmode="numeric" data-amount="0" required value="{{ money_input(l.charge_minor or l.payment_minor) }}"></label>
+              <label>Date<input type="date" name="date" value="{{ l.date }}"></label>
+              {% if l.kind == 'PAYMENT' %}<label>Reference<input name="reference" value="{{ l.reference or '' }}"></label>{% endif %}
+              <label>{{ 'Note' if l.kind == 'PAYMENT' else 'Description' }}<input name="note" value="{{ l.note or '' }}"></label>
+              <button class="btn small primary" type="submit">Save</button></form></details>
           <details class="pop"><summary class="btn small">Void…</summary>
             <form method="post" action="/customers/entries/{{ l.entry_id }}/void" class="pop-body">
               {{ csrf_field(csrf) }}<input type="hidden" name="next" value="{{ nxt }}">
@@ -113,6 +122,7 @@
       </tr>
     {% else %}<tr><td colspan="6" class="muted empty">No sales, debts or payments yet.</td></tr>{% endfor %}</tbody>
   </table></div>
+  {% if n_void %}<p class="muted small">{% if voided %}<a href="/customers?id={{ sel.id }}#detail">Hide voided and cancelled lines</a>{% else %}{{ n_void }} voided or cancelled line(s) hidden. <a href="/customers?id={{ sel.id }}&voided=1#detail">Show them</a>{% endif %}</p>{% endif %}
   <h3>Purchases</h3>
   <div class="table-wrap"><table class="data stackable compact">
     <thead><tr><th>Ref</th><th>Date</th><th>Product</th><th class="num">Qty</th><th class="num">Total</th><th>Paid?</th><th>Delivery note</th><th>Status</th><th></th></tr></thead>

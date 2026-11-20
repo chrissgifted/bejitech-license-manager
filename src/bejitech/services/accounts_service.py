@@ -63,6 +63,8 @@ class StatementLine:
     sale_id: int | None = None
     is_void: bool = False
     void_reason: str | None = None
+    note: str | None = None        # the entry's own note / reference, for the edit form
+    reference: str | None = None
 
 
 @dataclass
@@ -178,6 +180,27 @@ class AccountsService:
         return self.record_payment(customer_id, due.due_minor, entry_date, method or default_method,
                                    reference, f"Payment for {self._sale_ref(sale_id)}", sale_id=sale_id)
 
+    def update_entry(self, entry_id: int, amount_minor: int, entry_date: str | None, note: str | None = None,
+                     reference: str | None = None) -> None:
+        """Correct an earlier debt or a payment (amount, date, description). The old values go to the audit log."""
+        amount_minor = _parse_amount(amount_minor)
+        day = _parse_day(entry_date)
+        with self.ctx.db.session() as s:
+            e = s.get(CustomerEntry, entry_id)
+            if not e:
+                raise NotFoundError("Entry not found.")
+            if e.is_void:
+                raise ValidationError("This entry is void and cannot be edited.")
+            before = {"amount": e.amount_minor, "date": e.entry_date, "note": e.note, "reference": e.reference}
+            e.amount_minor, e.entry_date = amount_minor, day
+            if note is not None:
+                e.note = clean(note) or (e.note if e.kind == EntryKind.PAYMENT else "Balance brought forward")
+            if reference is not None and e.kind == EntryKind.PAYMENT:
+                e.reference = clean(reference)
+            c = s.get(Customer, e.customer_id)
+            audit(s, self.ctx.user_id, "ACCOUNT_ENTRY_EDITED", "customer", c.uuid, kind=e.kind, before=before,
+                  after={"amount": e.amount_minor, "date": e.entry_date, "note": e.note, "reference": e.reference})
+
     def void_entry(self, entry_id: int, reason: str) -> None:
         if not clean(reason):
             raise ValidationError("Please give a reason.")
@@ -227,6 +250,7 @@ class AccountsService:
                                          sale_id=e.sale_id)
                     order = 2
                 line.is_void, line.void_reason = bool(e.is_void), e.void_reason
+                line.note, line.reference = e.note, e.reference
                 events.append((e.entry_date, order, e.id, line))
         events.sort(key=lambda x: (x[0], x[1], x[2]))
         running = 0

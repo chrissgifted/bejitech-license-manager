@@ -246,3 +246,20 @@ def test_invoice_pdf_and_reminder_buttons(client):
     r = client.post("/settings/save", data={"csrf": token(client, "/settings"), "tab": "delivery",
                                             "delivery.instructions": "none", "delivery.footer": "Thanks"})
     assert r.status_code == 303 and 'value="none" selected' in client.get("/settings?tab=delivery").text
+
+
+def test_merge_two_earlier_debts_into_one(client):
+    setup_admin(client)
+    cid = add_customer(client, "Boss Vai")
+    for _ in range(2):
+        page = client.get(f"/customers?id={cid}").text
+        client.post(f"/customers/{cid}/opening-debt", data={"csrf": csrf(page), "amount": "25,000", "date": "2026-11-20"})
+    page = client.get(f"/customers?id={cid}").text
+    first, second = re.findall(r"/customers/entries/(\d+)/edit", page)
+    client.post(f"/customers/entries/{first}/edit", data={"csrf": csrf(page), "amount": "50,000", "date": "2026-11-20",
+                                                         "note": "Balance brought forward"})
+    client.post(f"/customers/entries/{second}/void", data={"csrf": csrf(page), "reason": "combined"})
+    page = client.get(f"/customers?id={cid}").text
+    assert len(re.findall(r"/customers/entries/\d+/edit", page)) == 1 and "1 voided or cancelled line(s) hidden" in page and "TZS 50,000" in page
+    assert "combined" in client.get(f"/customers?id={cid}&voided=1").text
+    assert "ACCOUNT_ENTRY_EDITED" in client.get("/settings?tab=audit").text
