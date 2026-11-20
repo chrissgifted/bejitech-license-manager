@@ -1,0 +1,9 @@
+{
+  "name": "Bejitech License Manager",
+  "short_name": "Bejitech",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F3F5F9",
+  "theme_color": "#1F4E9B",
+  "icons": [{"src": "/static/icon.png", "sizes": "1024x1024", "type": "image/png"}]
+}

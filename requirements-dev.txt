@@ -1,0 +1,8 @@
+-r requirements.txt
+pytest==9.2.0
+pytest-qt==4.5.0
+pytest-cov==7.1.0
+pypdf==7.1.1
+pyinstaller==6.22.3
+-r requirements-web.txt
+httpx==0.28.1

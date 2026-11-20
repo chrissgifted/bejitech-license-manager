@@ -1,0 +1,373 @@
+-- Bejitech License Manager: SQLite schema v1 (Phase 1 design)
+-- In the application this schema is produced by SQLAlchemy models + the built-in
+-- migration runner (migration 0001). This SQL file is the reviewable reference version.
+--
+-- Conventions
+--   * id INTEGER PRIMARY KEY  : local fast key
+--   * uuid TEXT UNIQUE        : stable cross-system identifier (sync / PostgreSQL)
+--   * *_minor INTEGER         : money in minor units (TZS whole shillings, USD cents)
+--   * timestamps TEXT         : UTC ISO-8601, e.g. 2026-11-18T14:10:06Z
+--   * dates TEXT              : YYYY-MM-DD
+--   * booleans INTEGER 0/1
+--   * Run with PRAGMA foreign_keys = ON
+
+PRAGMA foreign_keys = ON;
+
+-- ───────────────────────── Administration ─────────────────────────
+
+CREATE TABLE users (
+    id                INTEGER PRIMARY KEY,
+    uuid              TEXT NOT NULL UNIQUE,
+    username          TEXT NOT NULL UNIQUE,
+    display_name      TEXT NOT NULL,
+    password_hash     TEXT NOT NULL,              -- Argon2id encoded hash
+    role              TEXT NOT NULL DEFAULT 'ADMIN' CHECK (role IN ('ADMIN')),
+    is_active         INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
+    failed_logins     INTEGER NOT NULL DEFAULT 0,
+    last_login_at     TEXT,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+
+-- DEK wrapped by a recovery-passphrase-derived key (never the plain DEK)
+CREATE TABLE key_escrow (
+    id                INTEGER PRIMARY KEY,
+    purpose           TEXT NOT NULL UNIQUE CHECK (purpose IN ('RECOVERY')),
+    kdf               TEXT NOT NULL DEFAULT 'argon2id',
+    kdf_params        TEXT NOT NULL,              -- JSON: salt, time, memory, parallelism
+    wrapped_key       BLOB NOT NULL,
+    nonce             BLOB NOT NULL,
+    created_at        TEXT NOT NULL
+);
+
+CREATE TABLE settings (
+    key               TEXT PRIMARY KEY,           -- e.g. seller.name, seller.phone
+    value             TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+
+-- Gap-free yearly reference counters (INV-2026-00001, SAL-…, DN-…)
+CREATE TABLE reference_sequences (
+    prefix            TEXT NOT NULL,
+    year              INTEGER NOT NULL,           -- 0 for non-yearly (CUS)
+    next_value        INTEGER NOT NULL DEFAULT 1 CHECK (next_value >= 1),
+    PRIMARY KEY (prefix, year)
+);
+
+CREATE TABLE exchange_rates (
+    id                INTEGER PRIMARY KEY,
+    from_currency     TEXT NOT NULL CHECK (length(from_currency) = 3),
+    to_currency       TEXT NOT NULL DEFAULT 'TZS' CHECK (length(to_currency) = 3),
+    rate              TEXT NOT NULL,              -- decimal string, e.g. '2650.000000'
+    effective_date    TEXT NOT NULL,
+    source_note       TEXT,
+    created_at        TEXT NOT NULL,
+    UNIQUE (from_currency, to_currency, effective_date)
+);
+
+-- ───────────────────────── Catalogue ─────────────────────────
+-- Publisher → Product line → (Version, Edition, License type) = sellable product
+
+CREATE TABLE publishers (
+    id                INTEGER PRIMARY KEY,
+    uuid              TEXT NOT NULL UNIQUE,
+    name              TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    website           TEXT,
+    is_archived       INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0,1)),
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+
+CREATE TABLE categories (
+    id                INTEGER PRIMARY KEY,
+    uuid              TEXT NOT NULL UNIQUE,
+    name              TEXT NOT NULL UNIQUE COLLATE NOCASE,   -- Office Suites, Operating Systems…
+    sort_order        INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE license_types (
+    id                         INTEGER PRIMARY KEY,
+    code                       TEXT NOT NULL UNIQUE,         -- RETAIL, OEM, MAK, VOLUME, SUBSCRIPTION, BIND
+    name                       TEXT NOT NULL,
+    description                TEXT,
+    allows_multiple_customers  INTEGER NOT NULL DEFAULT 0 CHECK (allows_multiple_customers IN (0,1)),
+    reassignable               INTEGER NOT NULL DEFAULT 0 CHECK (reassignable IN (0,1)),
+    default_capacity           INTEGER NOT NULL DEFAULT 1 CHECK (default_capacity >= 1)
+);
+
+CREATE TABLE product_lines (                       -- e.g. "Microsoft Office", "Windows"
+    id                INTEGER PRIMARY KEY,
+    uuid              TEXT NOT NULL UNIQUE,
+    publisher_id      INTEGER NOT NULL REFERENCES publishers(id),
+    category_id       INTEGER NOT NULL REFERENCES categories(id),
+    name              TEXT NOT NULL COLLATE NOCASE,
+    is_archived       INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0,1)),
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL,
+    UNIQUE (publisher_id, name)
+);
+
+CREATE TABLE products (                            -- the sellable item
+    id                        INTEGER PRIMARY KEY,
+    uuid                      TEXT NOT NULL UNIQUE,
+    product_line_id           INTEGER NOT NULL REFERENCES product_lines(id),
+    display_name              TEXT NOT NULL,        -- "Microsoft Office 2024 Professional Plus"
+    version                   TEXT NOT NULL,        -- "2024"
+    edition                   TEXT NOT NULL,        -- "Professional Plus"
+    platform                  TEXT NOT NULL DEFAULT 'Windows',  -- Windows, macOS, Cross-platform
+    license_type_id           INTEGER NOT NULL REFERENCES license_types(id),
+    sku_code                  TEXT UNIQUE,          -- optional internal code
+    logo_path                 TEXT,                 -- relative to app data dir
+    purchase_price_minor      INTEGER NOT NULL DEFAULT 0 CHECK (purchase_price_minor >= 0),
+    purchase_currency         TEXT NOT NULL DEFAULT 'TZS',
+    selling_price_minor       INTEGER NOT NULL DEFAULT 0 CHECK (selling_price_minor >= 0),
+    selling_currency          TEXT NOT NULL DEFAULT 'TZS',
+    download_url              TEXT,
+    download_label            TEXT,                 -- NULL → "Download <display_name>"
+    download_url_verified     INTEGER NOT NULL DEFAULT 0 CHECK (download_url_verified IN (0,1)),
+    download_url_verified_at  TEXT,
+    installation_instructions TEXT,                 -- plain text / light markdown
+    activation_instructions   TEXT,
+    low_stock_threshold       INTEGER NOT NULL DEFAULT 3 CHECK (low_stock_threshold >= 0),
+    is_archived               INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0,1)),
+    created_at                TEXT NOT NULL,
+    updated_at                TEXT NOT NULL,
+    UNIQUE (product_line_id, version, edition, platform, license_type_id)
+);
+CREATE INDEX ix_products_name ON products(display_name);
+
+-- ───────────────────────── Parties ─────────────────────────
+
+CREATE TABLE suppliers (
+    id                INTEGER PRIMARY KEY,
+    uuid              TEXT NOT NULL UNIQUE,
+    name              TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    contact_name      TEXT,
+    phone             TEXT,
+    email             TEXT,
+    website           TEXT,
+    notes             TEXT,
+    is_archived       INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0,1)),
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+
+CREATE TABLE customers (
+    id                INTEGER PRIMARY KEY,
+    uuid              TEXT NOT NULL UNIQUE,
+    customer_ref      TEXT NOT NULL UNIQUE,         -- CUS-00001
+    full_name         TEXT NOT NULL,
+    organization      TEXT,
+    phone             TEXT,
+    email             TEXT,
+    address           TEXT,
+    notes             TEXT,
+    is_archived       INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0,1)),
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+CREATE INDEX ix_customers_name  ON customers(full_name);
+CREATE INDEX ix_customers_phone ON customers(phone);
+CREATE INDEX ix_customers_email ON customers(email);
+
+-- ───────────────────────── Inventory ─────────────────────────
+
+CREATE TABLE licenses (
+    id                         INTEGER PRIMARY KEY,
+    uuid                       TEXT NOT NULL UNIQUE,   -- also AES-GCM associated data
+    inventory_ref              TEXT NOT NULL UNIQUE,   -- INV-2026-00001
+    product_id                 INTEGER NOT NULL REFERENCES products(id),
+    supplier_id                INTEGER REFERENCES suppliers(id),
+    key_ciphertext             BLOB NOT NULL,
+    key_nonce                  BLOB NOT NULL,
+    key_suffix                 TEXT NOT NULL,          -- last 5 characters, shown masked
+    key_fingerprint            TEXT NOT NULL UNIQUE,   -- HMAC-SHA256, blocks duplicate keys
+    purchase_date              TEXT NOT NULL,
+    purchase_cost_minor        INTEGER NOT NULL CHECK (purchase_cost_minor >= 0),
+    purchase_currency          TEXT NOT NULL DEFAULT 'TZS' CHECK (purchase_currency IN ('TZS','USD')),
+    exchange_rate_to_tzs       TEXT NOT NULL DEFAULT '1', -- rate used at purchase time
+    purchase_cost_tzs          INTEGER NOT NULL CHECK (purchase_cost_tzs >= 0),
+    permitted_capacity         INTEGER NOT NULL CHECK (permitted_capacity >= 1),
+    allocated_qty              INTEGER NOT NULL DEFAULT 0,
+    confirmed_qty              INTEGER NOT NULL DEFAULT 0,
+    allows_multiple_customers  INTEGER NOT NULL DEFAULT 0 CHECK (allows_multiple_customers IN (0,1)),
+    reassignable               INTEGER NOT NULL DEFAULT 0 CHECK (reassignable IN (0,1)),
+    restrictions               TEXT,                   -- free text: region, machine type…
+    expiration_date            TEXT,                   -- NULL = no expiry
+    status                     TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','DISABLED')),
+    disabled_reason            TEXT,
+    notes                      TEXT,
+    created_at                 TEXT NOT NULL,
+    updated_at                 TEXT NOT NULL,
+    -- R2: the database itself refuses overselling
+    CHECK (allocated_qty >= 0 AND allocated_qty <= permitted_capacity),
+    CHECK (confirmed_qty >= 0 AND confirmed_qty <= allocated_qty)
+);
+CREATE INDEX ix_licenses_product ON licenses(product_id, status);
+
+-- ───────────────────────── Sales ─────────────────────────
+
+CREATE TABLE sales (
+    id                  INTEGER PRIMARY KEY,
+    uuid                TEXT NOT NULL UNIQUE,
+    sales_ref           TEXT NOT NULL UNIQUE,          -- SAL-2026-00001
+    customer_id         INTEGER NOT NULL REFERENCES customers(id),
+    sale_date           TEXT NOT NULL,
+    currency            TEXT NOT NULL DEFAULT 'TZS',
+    subtotal_minor      INTEGER NOT NULL CHECK (subtotal_minor >= 0),
+    discount_minor      INTEGER NOT NULL DEFAULT 0 CHECK (discount_minor >= 0),
+    total_minor         INTEGER NOT NULL CHECK (total_minor >= 0),
+    payment_method      TEXT NOT NULL CHECK (payment_method IN
+                          ('CASH','MOBILE_MONEY','BANK_TRANSFER','CARD','OTHER')),
+    payment_reference   TEXT,                          -- e.g. M-Pesa transaction id
+    status              TEXT NOT NULL DEFAULT 'COMPLETED' CHECK (status IN ('COMPLETED','CANCELLED')),
+    cancelled_at        TEXT,
+    cancel_reason       TEXT,
+    notes               TEXT,
+    created_by          INTEGER REFERENCES users(id),
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL,
+    CHECK (discount_minor <= subtotal_minor),
+    CHECK (total_minor = subtotal_minor - discount_minor)
+);
+CREATE INDEX ix_sales_customer ON sales(customer_id);
+CREATE INDEX ix_sales_date     ON sales(sale_date);
+
+CREATE TABLE sale_items (                                -- v1 UI uses one item per sale
+    id                  INTEGER PRIMARY KEY,
+    uuid                TEXT NOT NULL UNIQUE,
+    sale_id             INTEGER NOT NULL REFERENCES sales(id),
+    product_id          INTEGER NOT NULL REFERENCES products(id),
+    quantity            INTEGER NOT NULL CHECK (quantity >= 1),
+    unit_price_minor    INTEGER NOT NULL CHECK (unit_price_minor >= 0),
+    discount_minor      INTEGER NOT NULL DEFAULT 0 CHECK (discount_minor >= 0),
+    line_total_minor    INTEGER NOT NULL CHECK (line_total_minor >= 0),
+    CHECK (line_total_minor = quantity * unit_price_minor - discount_minor)
+);
+CREATE INDEX ix_sale_items_sale ON sale_items(sale_id);
+
+-- One sale item may draw from several keys (e.g. 5 activations = 3 + 2)
+CREATE TABLE license_allocations (
+    id                  INTEGER PRIMARY KEY,
+    uuid                TEXT NOT NULL UNIQUE,
+    license_id          INTEGER NOT NULL REFERENCES licenses(id),
+    sale_item_id        INTEGER NOT NULL REFERENCES sale_items(id),
+    customer_id         INTEGER NOT NULL REFERENCES customers(id),
+    quantity            INTEGER NOT NULL CHECK (quantity >= 1),
+    unit_cost_tzs       INTEGER NOT NULL CHECK (unit_cost_tzs >= 0),   -- COGS snapshot
+    status              TEXT NOT NULL DEFAULT 'ALLOCATED' CHECK (status IN
+                          ('ALLOCATED','CONFIRMED','RELEASED','CONSUMED')),
+    allocated_at        TEXT NOT NULL,
+    confirmed_at        TEXT,
+    closed_at           TEXT,                          -- when RELEASED or CONSUMED
+    close_reason        TEXT,
+    UNIQUE (license_id, sale_item_id)
+);
+CREATE INDEX ix_alloc_license  ON license_allocations(license_id, status);
+CREATE INDEX ix_alloc_customer ON license_allocations(customer_id);
+
+-- Append-only history (R7). Never UPDATE or DELETE.
+CREATE TABLE allocation_events (
+    id                  INTEGER PRIMARY KEY,
+    license_id          INTEGER NOT NULL REFERENCES licenses(id),
+    allocation_id       INTEGER REFERENCES license_allocations(id),
+    event_type          TEXT NOT NULL CHECK (event_type IN
+                          ('ALLOCATED','CONFIRMED','RELEASED','CONSUMED',
+                           'CAPACITY_ADJUSTED','DISABLED','ENABLED')),
+    qty_delta           INTEGER NOT NULL DEFAULT 0,    -- effect on allocated_qty
+    allocated_before    INTEGER NOT NULL,
+    allocated_after     INTEGER NOT NULL,
+    note                TEXT,
+    user_id             INTEGER REFERENCES users(id),
+    created_at          TEXT NOT NULL
+);
+CREATE INDEX ix_alloc_events_license ON allocation_events(license_id, created_at);
+
+CREATE TRIGGER trg_allocation_events_no_update BEFORE UPDATE ON allocation_events
+BEGIN SELECT RAISE(ABORT, 'allocation_events is append-only'); END;
+CREATE TRIGGER trg_allocation_events_no_delete BEFORE DELETE ON allocation_events
+BEGIN SELECT RAISE(ABORT, 'allocation_events is append-only'); END;
+
+-- ───────────────────────── Delivery notes ─────────────────────────
+
+CREATE TABLE delivery_notes (
+    id                  INTEGER PRIMARY KEY,
+    uuid                TEXT NOT NULL UNIQUE,
+    note_number         TEXT NOT NULL UNIQUE,          -- DN-2026-00001
+    sale_id             INTEGER NOT NULL REFERENCES sales(id),
+    revision            INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+    delivery_date       TEXT NOT NULL,
+    seller_snapshot     TEXT NOT NULL,                 -- JSON: name, phone, email at issue time
+    customer_snapshot   TEXT NOT NULL,                 -- JSON
+    include_signature   INTEGER NOT NULL DEFAULT 1 CHECK (include_signature IN (0,1)),
+    pdf_path            TEXT,                          -- relative to app data dir
+    pdf_sha256          TEXT,
+    status              TEXT NOT NULL DEFAULT 'ISSUED' CHECK (status IN ('ISSUED','VOID')),
+    void_reason         TEXT,
+    created_at          TEXT NOT NULL,
+    UNIQUE (sale_id, revision)
+);
+
+-- ───────────────────────── Audit & backup ─────────────────────────
+
+CREATE TABLE audit_log (
+    id                  INTEGER PRIMARY KEY,
+    occurred_at         TEXT NOT NULL,
+    user_id             INTEGER REFERENCES users(id),
+    action              TEXT NOT NULL,     -- LOGIN, LOGIN_FAILED, KEY_REVEALED, KEY_COPIED,
+                                           -- CREATE, UPDATE, ARCHIVE, SALE_CREATED, SALE_CANCELLED,
+                                           -- BACKUP_CREATED, RESTORE, SETTINGS_CHANGED …
+    entity_type         TEXT,              -- product, license, sale …
+    entity_uuid         TEXT,
+    details             TEXT               -- JSON; never contains a plaintext key or password
+);
+CREATE INDEX ix_audit_time   ON audit_log(occurred_at);
+CREATE INDEX ix_audit_entity ON audit_log(entity_type, entity_uuid);
+
+CREATE TRIGGER trg_audit_no_update BEFORE UPDATE ON audit_log
+BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
+CREATE TRIGGER trg_audit_no_delete BEFORE DELETE ON audit_log
+BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
+
+CREATE TABLE backup_history (
+    id                  INTEGER PRIMARY KEY,
+    uuid                TEXT NOT NULL UNIQUE,
+    kind                TEXT NOT NULL CHECK (kind IN ('MANUAL','AUTO','PRE_RESTORE','PRE_MIGRATION')),
+    file_path           TEXT NOT NULL,
+    file_sha256         TEXT NOT NULL,
+    size_bytes          INTEGER NOT NULL,
+    schema_revision     TEXT NOT NULL,
+    app_version         TEXT NOT NULL,
+    verified            INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0,1)),
+    verified_at         TEXT,
+    created_at          TEXT NOT NULL
+);
+
+-- ───────────────────────── Views (derived, never stored) ─────────────────────────
+
+CREATE VIEW v_license_stock AS
+SELECT
+    l.id, l.uuid, l.inventory_ref, l.product_id, p.display_name AS product_name,
+    l.key_suffix, l.permitted_capacity, l.allocated_qty, l.confirmed_qty,
+    (l.permitted_capacity - l.allocated_qty) AS remaining_qty,           -- R1
+    l.expiration_date, l.status,
+    CASE
+        WHEN l.status = 'DISABLED'                                       THEN 'DISABLED'
+        WHEN l.expiration_date IS NOT NULL AND l.expiration_date < date('now') THEN 'EXPIRED'
+        WHEN l.allocated_qty = 0                                         THEN 'AVAILABLE'
+        WHEN l.allocated_qty < l.permitted_capacity                      THEN 'PARTIALLY_ALLOCATED'
+        ELSE 'FULLY_ALLOCATED'
+    END AS stock_state
+FROM licenses l JOIN products p ON p.id = l.product_id;
+
+CREATE VIEW v_product_stock AS
+SELECT
+    p.id AS product_id, p.display_name, p.low_stock_threshold,
+    COUNT(s.id)                                                   AS total_keys,
+    COALESCE(SUM(CASE WHEN s.stock_state IN ('AVAILABLE','PARTIALLY_ALLOCATED')
+                      THEN s.remaining_qty END), 0)               AS available_activations,
+    COALESCE(SUM(s.allocated_qty), 0)                             AS allocated_activations,
+    COALESCE(SUM(s.stock_state = 'FULLY_ALLOCATED'), 0)           AS fully_allocated_keys
+FROM products p LEFT JOIN v_license_stock s ON s.product_id = p.id
+WHERE p.is_archived = 0
+GROUP BY p.id;

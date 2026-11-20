@@ -1,0 +1,45 @@
+# Render Blueprint: creates the web app, its PostgreSQL database and a disk for logos and PDFs.
+# Region Frankfurt. Approximate cost: Starter web service + Basic-256MB database + 1 GB disk.
+databases:
+  - name: bejitech-db
+    plan: basic-256mb
+    region: frankfurt
+    databaseName: bejitech
+    user: bejitech
+    postgresMajorVersion: "16"
+    ipAllowList: []          # only the app (inside Render) can reach the database
+
+services:
+  - type: web
+    name: bejitech-app
+    runtime: python
+    plan: starter
+    region: frankfurt
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: python -m bejitech.web serve
+    healthCheckPath: /healthz
+    disk:
+      name: bejitech-files
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.0"
+      - key: PYTHONPATH
+        value: src
+      - key: HOST
+        value: 0.0.0.0
+      - key: TZ
+        value: Africa/Dar_es_Salaam
+      - key: BEJITECH_DATA_DIR
+        value: /var/data
+      - key: BEJITECH_DATABASE_URL
+        fromDatabase:
+          name: bejitech-db
+          property: connectionString
+      - key: BEJITECH_SECRET_KEY      # signs the login cookie
+        generateValue: true
+      - key: BEJITECH_DEK             # encryption key for licence keys: copy it somewhere safe
+        generateValue: true
+      - key: BEJITECH_SETUP_TOKEN     # typed once when creating the administrator
+        generateValue: true

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#1F4E9B">
+<title>{% block title %}{{ app_name }}{% endblock %}</title>
+<link rel="icon" href="/static/icon.png">
+<link rel="apple-touch-icon" href="/static/icon.png">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="stylesheet" href="/static/style.css?v={{ version }}">
+</head>
+<body class="{% block body_class %}app{% endblock %}">
+{% block body %}
+<header class="topbar">
+  <a class="brand" href="/"><img src="/static/icon.png" alt="" width="28" height="28"><span>Bejitech</span></a>
+  <nav class="nav" aria-label="Main">
+    <a href="/" class="{{ 'on' if path == '/' }}">Dashboard</a>
+    <a href="/products" class="{{ 'on' if path.startswith('/products') }}">Products</a>
+    <span class="soon" title="Coming in the next phase">Inventory</span>
+    <span class="soon" title="Coming in the next phase">New sale</span>
+    <span class="soon" title="Coming in the next phase">Sales</span>
+    <span class="soon" title="Coming in the next phase">Customers</span>
+    <span class="soon" title="Coming in the next phase">Delivery notes</span>
+    <span class="soon" title="Coming in the next phase">Reports</span>
+  </nav>
+  <form method="post" action="/logout" class="who">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <span class="muted">{{ user }}</span>
+    <button class="btn small" type="submit">Sign out</button>
+  </form>
+</header>
+<main class="page">
+{% block content %}{% endblock %}
+</main>
+<footer class="foot muted">{{ app_name }} · web {{ version }}</footer>
+{% endblock %}
+</body>
+</html>

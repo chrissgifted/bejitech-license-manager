@@ -1,0 +1,18 @@
+{% extends "auth_base.html" %}
+{% block title %}Two-step login · Bejitech{% endblock %}
+{% block auth %}
+<h1>Turn on two-step login</h1>
+<ol class="steps">
+  <li>Install <strong>Google Authenticator</strong> or <strong>Microsoft Authenticator</strong> on your phone.</li>
+  <li>In the app, tap <strong>+</strong> and scan this code.</li>
+</ol>
+<div class="qr">{{ qr_svg | safe }}</div>
+<p class="muted small">Can't scan? Choose "enter a setup key" in the app and type:<br><code class="secret">{{ secret }}</code></p>
+<ol class="steps" start="3"><li>Type the 6-digit code the app now shows.</li></ol>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/setup/two-step" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>6-digit code<input name="code" inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7" autocomplete="one-time-code" class="code" required></label>
+  <button class="btn primary" type="submit">Turn on and continue</button>
+</form>
+{% endblock %}

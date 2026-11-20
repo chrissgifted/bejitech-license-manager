@@ -1,0 +1,182 @@
+"""Small, dependency-free migration runner (each migration runs in one transaction).
+
+Each migration has a version number and a function that receives a raw sqlite3
+connection. Applied versions are recorded in `schema_version`. Before migrating
+an existing database a copy is saved in the backups folder.
+
+Decision note: Phase 1 planned Alembic. A built-in runner was chosen instead
+because it bundles reliably with PyInstaller and avoids an extra dependency;
+SQLAlchemy models are still the single source used by the application.
+"""
+from __future__ import annotations
+
+import shutil
+import sqlite3
+from collections.abc import Callable
+from importlib import resources
+from pathlib import Path
+
+from bejitech.core.timeutil import utcnow_iso
+from bejitech.db import seed
+
+
+def _sql(name: str) -> str:
+    return resources.files("bejitech.db").joinpath(f"sql/{name}").read_text(encoding="utf-8")
+
+
+def _m0001_initial(conn) -> None:
+    if getattr(conn, "dialect", "sqlite") == "postgresql":
+        conn.executescript(_sql("0001_initial.pg.sql"))
+    else:
+        conn.executescript(_sql("0001_initial.sql"))
+    seed.seed_initial(conn)
+
+
+def _m0002_two_step_login(conn) -> None:
+    """Web version: authenticator-app codes and a lockout that survives restarts."""
+    binary = "BYTEA" if getattr(conn, "dialect", "sqlite") == "postgresql" else "BLOB"
+    for ddl in (
+        f"ALTER TABLE users ADD COLUMN totp_secret {binary}",
+        f"ALTER TABLE users ADD COLUMN totp_nonce {binary}",
+        "ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN locked_until TEXT",
+    ):
+        conn.execute(ddl)
+
+
+MIGRATIONS: list[tuple[int, str, Callable]] = [
+    (1, "initial schema and seed data", _m0001_initial),
+    (2, "two-step login and persistent lockout", _m0002_two_step_login),
+]
+
+LATEST_VERSION = MIGRATIONS[-1][0]
+
+
+class MigrationError(RuntimeError):
+    pass
+
+
+def current_version(conn: sqlite3.Connection) -> int:
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+    ).fetchone()
+    if not row:
+        return 0
+    v = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
+    return int(v or 0)
+
+
+def migrate(db_path: Path | str, backup_dir: Path | None = None) -> int:
+    """Bring the database up to LATEST_VERSION. Returns the final version.
+
+    db_path is a SQLite file path, or a postgresql:// URL for the web version."""
+    from bejitech.db.engine import is_postgres_url
+    if is_postgres_url(db_path):
+        return _migrate_postgres(str(db_path))
+    db_path = Path(db_path)
+    existed = db_path.exists() and db_path.stat().st_size > 0
+    conn = sqlite3.connect(db_path, autocommit=True)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        version = current_version(conn)
+        if version > LATEST_VERSION:
+            raise MigrationError(
+                f"This database was created by a newer version of the app (schema {version}). "
+                "Please update Bejitech License Manager."
+            )
+        if version == LATEST_VERSION:
+            return version
+        if existed and version > 0 and backup_dir is not None:
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            stamp = utcnow_iso().replace(":", "").replace("-", "")
+            conn.close()
+            shutil.copy2(db_path, backup_dir / f"pre_migration_v{version}_{stamp}.db")
+            conn = sqlite3.connect(db_path, autocommit=True)
+            conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_version ("
+            "version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)"
+        )
+        for number, name, func in MIGRATIONS:
+            if number <= version:
+                continue
+            try:
+                conn.execute("BEGIN")
+                func(conn)
+                conn.execute(
+                    "INSERT INTO schema_version(version, name, applied_at) VALUES (?,?,?)",
+                    (number, name, utcnow_iso()),
+                )
+                conn.execute("COMMIT")
+            except Exception as exc:
+                if conn.in_transaction:
+                    conn.execute("ROLLBACK")
+                raise MigrationError(f"Migration {number} ({name}) failed: {exc}") from exc
+            version = number
+        return version
+    finally:
+        conn.close()
+
+
+# ───────────────────────── PostgreSQL (web version) ─────────────────────────
+
+class _PgConn:
+    """Gives migrations and seed data the small part of the sqlite3 API they use."""
+
+    dialect = "postgresql"
+
+    def __init__(self, raw):
+        self.raw = raw
+
+    def execute(self, sql: str, params=()):
+        if sql.strip().upper() == "SELECT LAST_INSERT_ROWID()":
+            sql = "SELECT lastval()"
+        cur = self.raw.cursor()
+        cur.execute(sql.replace("?", "%s") if params else sql, params or None)
+        return cur
+
+    def executescript(self, sql: str) -> None:
+        self.raw.cursor().execute(sql)
+
+
+def _migrate_postgres(url: str) -> int:
+    import psycopg
+
+    from bejitech.db.engine import PG_LOCK_ID
+
+    plain = url.replace("postgresql+psycopg://", "postgresql://", 1).replace("postgres://", "postgresql://", 1)
+    raw = psycopg.connect(plain, autocommit=False)
+    try:
+        conn = _PgConn(raw)
+        conn.execute(f"SELECT pg_advisory_lock({PG_LOCK_ID})")  # one migrator at a time
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_version ("
+            "version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)"
+        )
+        raw.commit()
+        version = int(conn.execute("SELECT COALESCE(MAX(version), 0) FROM schema_version").fetchone()[0])
+        if version > LATEST_VERSION:
+            raise MigrationError(
+                f"This database was created by a newer version of the app (schema {version}). "
+                "Please update Bejitech License Manager."
+            )
+        for number, name, func in MIGRATIONS:
+            if number <= version:
+                continue
+            try:
+                func(conn)
+                conn.execute("INSERT INTO schema_version(version, name, applied_at) VALUES (?,?,?)",
+                             (number, name, utcnow_iso()))
+                raw.commit()
+            except Exception as exc:
+                raw.rollback()
+                raise MigrationError(f"Migration {number} ({name}) failed: {exc}") from exc
+            version = number
+        return version
+    finally:
+        try:
+            raw.rollback()
+            raw.cursor().execute(f"SELECT pg_advisory_unlock({PG_LOCK_ID})")
+            raw.commit()
+        finally:
+            raw.close()

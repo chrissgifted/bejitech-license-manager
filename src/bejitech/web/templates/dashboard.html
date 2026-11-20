@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Bejitech{% endblock %}
+{% block content %}
+<div class="head">
+  <div><h1>Dashboard</h1><p class="muted">{{ display_date(today) }}</p></div>
+  <form method="get" action="/" class="period">
+    <label for="period" class="muted small">Sales period</label>
+    <select id="period" name="period">
+      {% for k, v in periods.items() %}<option value="{{ k }}" {{ 'selected' if k == period }}>{{ v }}</option>{% endfor %}
+    </select>
+    <button class="btn small" type="submit">Show</button>
+  </form>
+</div>
+
+<section class="stats" aria-label="Stock">
+  <div class="stat"><span>Products</span><strong>{{ "{:,}".format(d.total_products) }}</strong></div>
+  <div class="stat"><span>Purchased keys</span><strong>{{ "{:,}".format(d.total_keys) }}</strong></div>
+  <div class="stat {{ 'warn' if d.low_stock }}"><span>Available activations</span><strong>{{ "{:,}".format(d.available_activations) }}</strong></div>
+  <div class="stat"><span>Allocated activations</span><strong>{{ "{:,}".format(d.allocated_activations) }}</strong></div>
+  <div class="stat"><span>Fully allocated keys</span><strong>{{ "{:,}".format(d.fully_allocated_keys) }}</strong></div>
+</section>
+<section class="stats" aria-label="Sales">
+  <div class="stat"><span>Customers</span><strong>{{ "{:,}".format(d.total_customers) }}</strong></div>
+  <div class="stat"><span>Sales</span><strong>{{ "{:,}".format(d.total_sales) }}</strong></div>
+  <div class="stat"><span>Revenue</span><strong>{{ format_money(d.revenue) }}</strong></div>
+  <div class="stat"><span>Purchase costs</span><strong>{{ format_money(d.purchase_costs) }}</strong></div>
+  <div class="stat {{ 'good' if d.gross_profit >= 0 else 'bad' }}"><span>Gross profit</span><strong>{{ format_money(d.gross_profit) }}</strong></div>
+</section>
+
+<div class="cols">
+  <section class="card">
+    <h2>Low-stock alerts</h2>
+    {% if d.low_stock %}
+    <ul class="alerts">
+      {% for a in d.low_stock %}<li><strong>{{ a.display_name }}</strong><span>{{ a.available_activations }} available · alert below {{ a.low_stock_threshold }}</span></li>{% endfor %}
+    </ul>
+    {% else %}<p class="ok">All products are above their low-stock level.</p>{% endif %}
+  </section>
+  <section class="card wide">
+    <h2>Recent sales</h2>
+    {% if sales %}
+    <div class="table-wrap"><table class="stackable">
+      <thead><tr><th>Ref</th><th>Date</th><th>Customer</th><th>Product</th><th class="num">Qty</th><th class="num">Total (TZS)</th><th>Status</th></tr></thead>
+      <tbody>{% for s in sales %}
+        <tr><td class="nowrap" data-label="Ref">{{ s.sales_ref }}</td><td class="nowrap" data-label="Date">{{ display_date(s.sale_date) }}</td>
+            <td data-label="Customer">{{ s.customer_name }}</td><td data-label="Product">{{ s.product_names }}</td>
+            <td class="num" data-label="Qty">{{ s.quantity }}</td><td class="num" data-label="Total (TZS)">{{ format_money(s.total_minor, with_code=False) }}</td>
+            <td data-label="Status"><span class="pill {{ s.status | lower }}">{{ s.status | title }}</span></td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="muted">No sales yet.</p>{% endif %}
+  </section>
+</div>
+<p class="muted small">Gross profit = revenue − cost of the activations sold. Purchase costs = money spent on keys bought in the period.</p>
+{% endblock %}
