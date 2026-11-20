@@ -31,9 +31,9 @@
     <h2>Prices</h2>
     <div class="form-grid">
       <label>Typical purchase price
-        <span class="input-row"><input name="cost" inputmode="decimal" value="{{ form.cost or '' }}" placeholder="0">
+        <span class="input-row"><input name="cost" inputmode="decimal" data-amount="2" value="{{ form.cost or '' }}" placeholder="0">
         <select name="cost_currency" class="narrow">{% for c in ("TZS", "USD") %}<option {{ 'selected' if form.cost_currency == c }}>{{ c }}</option>{% endfor %}</select></span></label>
-      <label>Selling price (TZS)<input name="price" inputmode="decimal" value="{{ form.price or '' }}" placeholder="0"></label>
+      <label>Selling price (TZS)<input name="price" inputmode="numeric" data-amount="0" value="{{ form.price or '' }}" placeholder="0"></label>
     </div>
     <p class="muted small">The actual cost of each key is recorded when you add it to inventory.</p>
     <h2>Logo</h2>

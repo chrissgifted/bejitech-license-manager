@@ -12,7 +12,7 @@
 </form>
 <div class="card flush">
 <div class="table-wrap tall"><table class="data stackable">
-  <thead><tr><th>Ref</th><th>Name</th><th>Organisation</th><th>Phone</th><th>Email</th><th class="num">Purchases</th><th class="num">Total spent (TZS)</th><th></th></tr></thead>
+  <thead><tr><th>Ref</th><th>Name</th><th>Organisation</th><th>Phone</th><th>Email</th><th class="num">Purchases</th><th class="num">Total spent</th><th></th></tr></thead>
   <tbody>
   {% for c in rows %}
     <tr data-href="/customers?id={{ c.id }}" class="{{ 'selected' if sel and sel.id == c.id }} {{ 'dim' if c.is_archived }}">
@@ -20,7 +20,7 @@
       <td data-label="Name"><strong>{{ c.full_name }}</strong>{% if c.is_archived %} <span class="state s-disabled">Archived</span>{% endif %}</td>
       <td data-label="Organisation">{{ c.organization or '' }}</td><td class="nowrap" data-label="Phone">{{ c.phone or '' }}</td>
       <td data-label="Email">{{ c.email or '' }}</td><td class="num" data-label="Purchases">{{ c.purchases }}</td>
-      <td class="num" data-label="Total spent">{{ format_money(c.total_spent_minor, with_code=False) }}</td>
+      <td class="num" data-label="Total spent">{{ format_money(c.total_spent_minor) }}</td>
       <td class="row-actions"><a class="btn small" href="/customers/{{ c.id }}/edit">Edit</a>
         <a class="btn small" href="/sales/new?customer={{ c.id }}">+ Sale</a></td>
     </tr>
@@ -40,11 +40,11 @@
   <p class="muted">{{ sel.customer_ref }}{% if sel.organization %} · {{ sel.organization }}{% endif %}{% if sel.phone %} · {{ sel.phone }}{% endif %}{% if sel.email %} · {{ sel.email }}{% endif %}{% if sel.address %} · {{ sel.address }}{% endif %}</p>
   {% if sel.notes %}<p class="small">Notes: {{ sel.notes }}</p>{% endif %}
   <div class="table-wrap"><table class="data stackable compact">
-    <thead><tr><th>Ref</th><th>Date</th><th>Product</th><th class="num">Qty</th><th class="num">Total (TZS)</th><th>Delivery note</th><th>Status</th></tr></thead>
+    <thead><tr><th>Ref</th><th>Date</th><th>Product</th><th class="num">Qty</th><th class="num">Total</th><th>Delivery note</th><th>Status</th></tr></thead>
     <tbody>{% for s in hist %}
       <tr data-href="/sales?id={{ s.id }}"><td data-label="Ref"><a href="/sales?id={{ s.id }}">{{ s.sales_ref }}</a></td><td class="nowrap" data-label="Date">{{ display_date(s.sale_date) }}</td>
         <td data-label="Product">{{ s.product_names }}</td><td class="num" data-label="Qty">{{ s.quantity }}</td>
-        <td class="num" data-label="Total">{{ format_money(s.total_minor, with_code=False) }}</td>
+        <td class="num" data-label="Total">{{ format_money(s.total_minor) }}</td>
         <td data-label="Delivery note">{% if s.delivery_note_id %}<a href="/delivery-notes?id={{ s.delivery_note_id }}">{{ s.delivery_note_number }}</a>{% endif %}</td>
         <td data-label="Status"><span class="state s-{{ s.status | lower }}">{{ s.status | title }}</span></td></tr>
     {% else %}<tr><td colspan="7" class="muted empty">No purchases yet.</td></tr>{% endfor %}</tbody>

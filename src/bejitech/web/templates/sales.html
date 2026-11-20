@@ -20,13 +20,13 @@
 </form>
 <div class="card flush">
 <div class="table-wrap tall"><table class="data stackable">
-  <thead><tr><th>Ref</th><th>Date</th><th>Customer</th><th>Product</th><th class="num">Qty</th><th class="num">Total (TZS)</th><th>Payment</th><th>Status</th></tr></thead>
+  <thead><tr><th>Ref</th><th>Date</th><th>Customer</th><th>Product</th><th class="num">Qty</th><th class="num">Total</th><th>Payment</th><th>Status</th></tr></thead>
   <tbody>{% for s in rows %}
     <tr data-href="/sales?{{ query }}{{ '&' if query }}id={{ s.id }}" class="{{ 'selected' if sel and sel.id == s.id }}">
       <td class="nowrap" data-label="Ref"><a href="/sales?{{ query }}{{ '&' if query }}id={{ s.id }}">{{ s.sales_ref }}</a></td>
       <td class="nowrap" data-label="Date">{{ display_date(s.sale_date) }}</td><td data-label="Customer">{{ s.customer_name }}</td>
       <td data-label="Product">{{ s.product_names }}</td><td class="num" data-label="Qty">{{ s.quantity }}</td>
-      <td class="num" data-label="Total">{{ format_money(s.total_minor, with_code=False) }}</td>
+      <td class="num" data-label="Total">{{ format_money(s.total_minor) }}</td>
       <td data-label="Payment">{{ payment_label(s.payment_method) }}</td>
       <td data-label="Status"><span class="state s-{{ s.status | lower }}">{{ s.status | title }}</span></td></tr>
   {% else %}<tr><td colspan="8" class="muted empty">No sales match.</td></tr>{% endfor %}</tbody>

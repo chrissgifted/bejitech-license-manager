@@ -43,7 +43,7 @@
       <tbody>{% for s in sales %}
         <tr data-href="/sales?id={{ s.id }}"><td class="nowrap" data-label="Ref"><a href="/sales?id={{ s.id }}">{{ s.sales_ref }}</a></td><td class="nowrap" data-label="Date">{{ display_date(s.sale_date) }}</td>
             <td data-label="Customer">{{ s.customer_name }}</td><td data-label="Product">{{ s.product_names }}</td>
-            <td class="num" data-label="Qty">{{ s.quantity }}</td><td class="num" data-label="Total">{{ format_money(s.total_minor, with_code=False) }}</td>
+            <td class="num" data-label="Qty">{{ s.quantity }}</td><td class="num" data-label="Total">{{ format_money(s.total_minor) }}</td>
             <td data-label="Status"><span class="state s-{{ s.status | lower }}">{{ s.status | title }}</span></td></tr>
       {% endfor %}</tbody>
     </table></div>

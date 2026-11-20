@@ -39,7 +39,7 @@
       {% if not lic %}
       <label>Purchase date *<input type="date" name="purchase_date" value="{{ form.purchase_date or '' }}" required></label>
       <label>Cost per key *
-        <span class="input-row"><input name="cost" inputmode="decimal" value="{{ form.cost or '' }}" required placeholder="0">
+        <span class="input-row"><input name="cost" inputmode="decimal" data-amount="2" value="{{ form.cost or '' }}" required placeholder="0">
         <select name="currency" class="narrow" data-currency>{% for c in ("TZS", "USD") %}<option {{ 'selected' if form.currency == c }}>{{ c }}</option>{% endfor %}</select></span></label>
       <label data-rate-row>USD → TZS rate<input name="rate" inputmode="decimal" value="{{ form.rate or '' }}"></label>
       <label>Permitted activations *<input type="number" name="capacity" min="1" value="{{ form.capacity or 1 }}" required data-capacity></label>

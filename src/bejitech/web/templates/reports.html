@@ -22,11 +22,11 @@
 </div>
 <div class="card flush">
 <div class="table-wrap tall"><table class="data stackable">
-  <thead><tr>{% for h in rep.headers %}<th class="{{ 'num' if '(' in h or h in ('Qty', 'Keys', 'Capacity', 'Allocated', 'Confirmed', 'Remaining', 'Purchases', 'Sales') }}">{{ h }}</th>{% endfor %}</tr></thead>
+  <thead><tr>{% for h in rep.headers %}<th class="{{ 'num' if '(' in h or h in money_cols or h in ('Qty', 'Keys', 'Capacity', 'Allocated', 'Confirmed', 'Remaining', 'Purchases', 'Sales') }}">{{ h }}</th>{% endfor %}</tr></thead>
   <tbody>
-  {% for row in rep.rows %}<tr>{% for v in row %}<td data-label="{{ rep.headers[loop.index0] }}" class="{{ 'num' if v is number }}">{{ "{:,}".format(v) if v is number and v is not boolean else v }}</td>{% endfor %}</tr>
+  {% for row in rep.rows %}<tr>{% for v in row %}{% set h = rep.headers[loop.index0] %}<td data-label="{{ h }}" class="{{ 'num' if v is number or h in money_cols }}">{{ ('TZS ' if h in money_cols and v not in ('', None) else '') ~ ("{:,}".format(v) if v is number and v is not boolean else v) }}</td>{% endfor %}</tr>
   {% else %}<tr><td colspan="{{ rep.headers | length }}" class="muted empty">Nothing to show for this period.</td></tr>{% endfor %}
-  {% if rep.totals %}<tr class="totals">{% for v in rep.totals %}<td data-label="{{ rep.headers[loop.index0] }}" class="{{ 'num' if v is number }}">{{ "{:,}".format(v) if v is number else (v or '') }}</td>{% endfor %}</tr>{% endif %}
+  {% if rep.totals %}<tr class="totals">{% for v in rep.totals %}{% set h = rep.headers[loop.index0] %}<td data-label="{{ h }}" class="{{ 'num' if v is number or h in money_cols }}">{{ ('TZS ' if h in money_cols and v not in ('', None) else '') ~ ("{:,}".format(v) if v is number else (v or '')) }}</td>{% endfor %}</tr>{% endif %}
   </tbody>
 </table></div>
 </div>

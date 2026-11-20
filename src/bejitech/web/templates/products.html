@@ -13,7 +13,7 @@
 <div class="card flush">
 <div class="table-wrap"><table class="data stackable">
   <thead><tr><th></th><th>Product</th><th>Publisher</th><th>Category</th><th>Platform</th><th>Licence type</th>
-    <th class="num">Price (TZS)</th><th class="num">Keys</th><th class="num">Available</th><th>Download link</th><th></th></tr></thead>
+    <th class="num">Price</th><th class="num">Keys</th><th class="num">Available</th><th>Download link</th><th></th></tr></thead>
   <tbody>
   {% for p in products %}
     <tr class="{{ 'dim' if p.is_archived }}" data-href="/products/{{ p.id }}/edit">
@@ -21,7 +21,7 @@
       <td data-label="Product"><a href="/products/{{ p.id }}/edit"><strong>{{ p.display_name }}</strong></a>{% if p.is_archived %} <span class="state s-disabled">Archived</span>{% endif %}</td>
       <td data-label="Publisher">{{ p.publisher }}</td><td data-label="Category">{{ p.category }}</td>
       <td data-label="Platform">{{ p.platform }}</td><td data-label="Licence type">{{ p.license_type }}</td>
-      <td class="num" data-label="Price">{{ format_money(p.selling_price_minor, with_code=False) }}</td>
+      <td class="num" data-label="Price">{{ format_money(p.selling_price_minor) }}</td>
       <td class="num" data-label="Keys">{{ p.total_keys }}</td>
       <td class="num {{ 'warn-text' if p.is_low_stock }}" data-label="Available">{{ p.available_activations }}</td>
       <td data-label="Download link">{% if p.download_url %}{{ p.effective_download_label }}{% if p.download_url_verified %} <span class="ok">✓</span>{% endif %}{% else %}<span class="warn-text">Missing</span>{% endif %}</td>

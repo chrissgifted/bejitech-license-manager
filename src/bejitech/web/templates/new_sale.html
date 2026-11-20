@@ -39,8 +39,8 @@
     <section class="card">
       <h2><span class="step">4</span> Price and payment</h2>
       <div class="form-grid one">
-        <label>Unit price (TZS)<input name="price" inputmode="decimal" value="{{ form.price or '' }}" class="num-input" data-price></label>
-        <label>Discount (TZS)<input name="discount" inputmode="decimal" value="{{ form.discount or '' }}" placeholder="0" class="num-input" data-discount></label>
+        <label>Unit price (TZS)<input name="price" inputmode="numeric" data-amount="0" value="{{ form.price or '' }}" class="num-input" data-price></label>
+        <label>Discount (TZS)<input name="discount" inputmode="numeric" data-amount="0" value="{{ form.discount or '' }}" placeholder="0" class="num-input" data-discount></label>
         <div class="total-row"><span>Total</span><strong data-total>TZS 0</strong></div>
         <label>Payment method<select name="payment">
           {% for v, l in methods %}<option value="{{ v }}" {{ 'selected' if (form.payment or 'MOBILE_MONEY') == v }}>{{ l }}</option>{% endfor %}

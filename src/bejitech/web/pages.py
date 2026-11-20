@@ -32,6 +32,9 @@ SETTINGS_TABS = [("business", "Business"), ("sales", "Sales & currency"), ("type
                  ("delivery", "Delivery notes"), ("security", "Security"), ("audit", "Audit log"),
                  ("about", "About")]
 REAUTH_SECONDS = 5 * 60
+# Report columns that hold TZS amounts (shown with the currency on screen)
+MONEY_COLS = {"Cost TZS", "Subtotal", "Discount", "Total", "Total spent TZS", "Revenue", "Cost of keys sold",
+              "Cancelled & consumed", "Gross profit"}
 
 
 def period_range(key: str) -> tuple[str | None, str | None]:
@@ -599,7 +602,7 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
         period = period if period in PERIODS else "all"
         rep = ctx.reports.report(name, *period_range(period))
         return page(request, "reports.html", rep=rep, rname=name, period=period, reports=REPORTS,
-                    periods=PERIODS, dated=name in ("sales", "customers", "profit"))
+                    periods=PERIODS, dated=name in ("sales", "customers", "profit"), money_cols=MONEY_COLS)
 
     @app.get("/reports/{name}.{fmt}")
     def report_export(request: Request, name: str, fmt: str, period: str = "all"):

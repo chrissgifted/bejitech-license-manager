@@ -72,6 +72,24 @@
       }, secs * 1000);
     });
 
+    // Amount boxes: show thousands separators while typing (1500000 -> 1,500,000)
+    $$("input[data-amount]").forEach(function (inp) {
+      const fmt = function () {
+        const raw = inp.value.replace(/[^0-9.]/g, "");
+        if (!raw) { inp.value = ""; return; }
+        const parts = raw.split(".");
+        const whole = parts[0].replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        const decimals = inp.dataset.amount === "2" && parts.length > 1 ? "." + parts.slice(1).join("").slice(0, 2) : "";
+        const fromEnd = inp.value.length - (inp.selectionStart === null ? inp.value.length : inp.selectionStart);
+        inp.value = whole + decimals;
+        if (document.activeElement === inp) {
+          const pos = Math.max(0, inp.value.length - fromEnd);
+          inp.setSelectionRange(pos, pos);
+        }
+      };
+      inp.addEventListener("input", fmt); fmt();
+    });
+
     productForm();
     licenseForm();
     newSale();
@@ -146,7 +164,7 @@
     const form = $("#sale-form");
     if (!form) return;
     const customer = $("[data-customer]", form), product = $("[data-product]", form), qty = $("[data-qty]", form);
-    const price = $("[data-price]", form), discount = $("[data-discount]", form), total = $("[data-total]", form);
+    const price = $("input[data-price]", form), discount = $("input[data-discount]", form), total = $("[data-total]", form);
     const options = $("[data-options]", form), plan = $("[data-plan]", form), after = $("[data-after]", form);
     const complete = $("[data-complete]", form);
     let afterTexts = {}, timer = null, seq = 0;
