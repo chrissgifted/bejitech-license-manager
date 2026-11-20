@@ -13,3 +13,4 @@ itsdangerous==2.2.0
 psycopg[binary]==3.3.9
 pyotp==2.12.1
 qrcode==8.2
+Pillow>=10

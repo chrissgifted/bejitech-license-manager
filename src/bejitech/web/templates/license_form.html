@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_macros.html" import head, csrf_field %}
+{% block title %}{{ 'Edit licence key' if lic else 'Add licence keys' }} · Bejitech{% endblock %}
+{% block content %}
+{% call head(("Edit " ~ lic.inventory_ref) if lic else "Add licence keys", "Keys are encrypted as soon as they are saved.") %}<a class="btn" href="/inventory{{ ('?id=' ~ lic.id) if lic else '' }}">Cancel</a>{% endcall %}
+{% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+<form method="post" action="/inventory/save" class="form-cols" id="license-form"
+      data-product-types='{{ product_types | tojson }}' data-type-defaults='{{ type_defaults | tojson }}' data-editing="{{ 1 if lic else 0 }}">
+  {{ csrf_field(csrf) }}<input type="hidden" name="id" value="{{ lic.id if lic else '' }}">
+  <datalist id="dl-suppliers">{% for x in suppliers %}<option value="{{ x }}">{% endfor %}</datalist>
+  <section class="card">
+    <h2>Key</h2>
+    <div class="form-grid one">
+      <label>Product *<select name="product_id" required {{ 'disabled' if lic and not changeable }} data-product>
+        {% if not products %}<option value="">Add a product first</option>{% endif %}
+        {% for p in products %}<option value="{{ p.id }}" {{ 'selected' if (form.product_id|string) == (p.id|string) }}>{{ p.display_name }}</option>{% endfor %}
+      </select></label>
+      <label>Licence type *<select name="license_type_id" {{ 'disabled' if lic and not changeable }} data-ltype>
+        {% for t in types %}<option value="{{ t.id }}" {{ 'selected' if (form.license_type_id|string) == (t.id|string) }}>{{ t.name }}</option>{% endfor %}
+      </select></label>
+      {% if lic and not changeable %}
+        <input type="hidden" name="product_id" value="{{ form.product_id }}">
+        <p class="note small">This key has already been sold, so its product and licence type are locked. Cancel those sales with the activations returned to stock, or disable the key and add it again.</p>
+      {% else %}
+        <p class="muted small" data-type-hint hidden>If this product doesn't exist with the chosen licence type yet, it is created with the same prices, download link and instructions.</p>
+      {% endif %}
+      {% if lic %}
+        <label>Licence key<input value="{{ lic.masked_key }}" disabled></label>
+      {% else %}
+        <label>Licence key(s) * <span class="muted small">one per line; paste many lines to add them all at once</span>
+          <textarea name="keys" rows="4" class="mono" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" required autocomplete="off" spellcheck="false">{{ form.get("keys") or '' }}</textarea></label>
+      {% endif %}
+      <label>Supplier<input name="supplier" list="dl-suppliers" value="{{ form.supplier or '' }}"></label>
+    </div>
+  </section>
+  <section class="card">
+    <h2>{{ 'Terms' if lic else 'Purchase and terms' }}</h2>
+    <div class="form-grid">
+      {% if not lic %}
+      <label>Purchase date *<input type="date" name="purchase_date" value="{{ form.purchase_date or '' }}" required></label>
+      <label>Cost per key *
+        <span class="input-row"><input name="cost" inputmode="decimal" value="{{ form.cost or '' }}" required placeholder="0">
+        <select name="currency" class="narrow" data-currency>{% for c in ("TZS", "USD") %}<option {{ 'selected' if form.currency == c }}>{{ c }}</option>{% endfor %}</select></span></label>
+      <label data-rate-row>USD → TZS rate<input name="rate" inputmode="decimal" value="{{ form.rate or '' }}"></label>
+      <label>Permitted activations *<input type="number" name="capacity" min="1" value="{{ form.capacity or 1 }}" required data-capacity></label>
+      {% endif %}
+      <label>Expiry date<input type="date" name="expiry" value="{{ form.expiry or '' }}"></label>
+      <label>Restrictions<input name="restrictions" value="{{ form.restrictions or '' }}" placeholder="e.g. Windows only, Tanzania region, one PC"></label>
+    </div>
+    <label class="check"><input type="checkbox" name="multi" value="1" {{ 'checked' if form.multi }} data-multi> Can be shared by several customers</label>
+    <label class="check"><input type="checkbox" name="reassign" value="1" {{ 'checked' if form.reassign }} data-reassign> Activations can be returned to stock after a cancellation</label>
+    <p class="muted small">Turn these on only when the licence terms allow it.</p>
+    <label class="block">Notes<textarea name="notes" rows="3">{{ form.notes or '' }}</textarea></label>
+  </section>
+  <div class="form-actions span-2"><a class="btn" href="/inventory">Cancel</a><button class="btn primary" type="submit">Save</button></div>
+</form>
+{% endblock %}

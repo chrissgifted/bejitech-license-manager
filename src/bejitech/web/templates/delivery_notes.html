@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_macros.html" import head, csrf_field %}
+{% block title %}Delivery Notes · Bejitech{% endblock %}
+{% block content %}
+{% call head("Delivery Notes", "Product-branded A4 PDFs with the key, download link and instructions.") %}{% endcall %}
+<form method="get" action="/delivery-notes" class="toolbar">
+  <input type="search" name="q" value="{{ q }}" placeholder="🔍 Search DN number, sale ref, customer…" aria-label="Search">
+  <button class="btn" type="submit">Search</button>
+</form>
+<div class="card flush">
+<div class="table-wrap tall"><table class="data stackable">
+  <thead><tr><th>Number</th><th>Date</th><th>Customer</th><th>Sale</th><th>Status</th><th></th></tr></thead>
+  <tbody>{% for n in rows %}
+    <tr data-href="/delivery-notes?id={{ n.id }}" class="{{ 'selected' if sel and sel.id == n.id }}">
+      <td class="nowrap" data-label="Number"><a href="/delivery-notes?id={{ n.id }}">{{ n.note_number }}</a></td>
+      <td class="nowrap" data-label="Date">{{ display_date(n.delivery_date) }}</td><td data-label="Customer">{{ n.customer_name }}</td>
+      <td data-label="Sale"><a href="/sales?id={{ n.sale_id }}">{{ n.sales_ref }}</a></td>
+      <td data-label="Status"><span class="state s-{{ n.status | lower }}">{{ n.status | title }}</span></td>
+      <td class="row-actions"><a class="btn small" href="/delivery-notes/{{ n.id }}/pdf" target="_blank" rel="noopener">Open PDF</a></td></tr>
+  {% else %}<tr><td colspan="6" class="muted empty">No delivery notes yet. They are created with each sale.</td></tr>{% endfor %}</tbody>
+</table></div>
+</div>
+{% if sel %}
+<section class="card detail" id="detail">
+  <h2>{{ sel.note_number }} · {{ sel.customer_name }}</h2>
+  <p class="muted">Sale {{ sel.sales_ref }} · {{ display_date(sel.delivery_date) }} · Revision {{ sel.revision }} · <span class="state s-{{ sel.status | lower }}">{{ sel.status | title }}</span></p>
+  <div class="actions">
+    <a class="btn primary" href="/delivery-notes/{{ sel.id }}/pdf" target="_blank" rel="noopener">Open PDF (print from there)</a>
+    <a class="btn" href="/delivery-notes/{{ sel.id }}/pdf?download=1">Download PDF</a>
+    {% if mail %}<a class="btn" href="{{ mail }}">Prepare email</a>{% endif %}
+    {% if sel.status == 'ISSUED' %}
+    <form method="post" action="/delivery-notes/{{ sel.id }}/reissue" class="inline" data-confirm="Issue a new revision with today's seller and customer details? The current note will be marked VOID.">
+      {{ csrf_field(csrf) }}<button class="btn" type="submit">Re-issue as new revision</button></form>
+    {% endif %}
+  </div>
+  {% if mail %}<p class="muted small">Prepare email opens your mail app with the message filled in{% if not sel.customer_email %} (this customer has no email address yet){% endif %}. Download the PDF first and attach it by hand.</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

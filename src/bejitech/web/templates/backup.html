@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import head, csrf_field %}
+{% block title %}Backup & Restore · Bejitech{% endblock %}
+{% block content %}
+{% call head("Backup & Restore", "Encrypted backups of everything: database, logos, delivery notes and the key that unlocks your licence keys.") %}{% endcall %}
+{% if not supported %}
+<section class="card narrow-card"><p>This online copy is backed up automatically every day by the hosting service. Backup files are made from the copy on your computer.</p></section>
+{% else %}
+<div class="split">
+  <section class="card">
+    <h2>Make a backup</h2>
+    <form method="post" action="/backup/create" class="stack">
+      {{ csrf_field(csrf) }}
+      <label>Backup password * <span class="muted small">(at least 8 characters; needed to restore)</span><input type="password" name="password" minlength="8" autocomplete="new-password" required></label>
+      <label>Repeat password<input type="password" name="password2" minlength="8" autocomplete="new-password" required></label>
+      <button class="btn primary" type="submit">Create and verify backup</button>
+    </form>
+    <p class="muted small">Saved in {{ folder }}. Download each backup and keep a copy somewhere else (USB drive, Google Drive…).</p>
+  </section>
+  <section class="card grow">
+    <h2>Backups</h2>
+    <div class="table-wrap"><table class="data stackable compact">
+      <thead><tr><th>When</th><th>Kind</th><th class="num">Size</th><th>Verified</th><th></th></tr></thead>
+      <tbody>{% for b in hist %}
+        <tr><td class="nowrap" data-label="When">{{ display_datetime(b.created_at) }}</td><td data-label="Kind">{{ b.kind | replace('_', ' ') | title }}</td>
+          <td class="num" data-label="Size">{{ '%.1f' % (b.size_bytes / 1048576) }} MB</td><td data-label="Verified">{{ '✓' if b.verified else '—' }}</td>
+          <td class="row-actions">{% if b.downloadable %}<a class="btn small" href="/backup/file/{{ b.name }}">Download</a>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="5" class="muted empty">No backups yet.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+</div>
+{% if restore_ok %}
+<section class="card">
+  <h2>Restore a backup</h2>
+  <p class="muted small">Replaces <strong>all</strong> current data with the backup, including the user account. A safety backup of the current data is made first. Backups from the desktop app work too: this is how you bring your Mac app's data into the web version.</p>
+  <form method="post" action="/backup/restore" enctype="multipart/form-data" class="form-grid">
+    {{ csrf_field(csrf) }}
+    <label>Backup file *<input type="file" name="file" accept=".bjtbackup" required></label>
+    <label>Backup password *<input type="password" name="password" autocomplete="off" required></label>
+    <label>Type REPLACE to confirm *<input name="confirm" autocomplete="off" required pattern="REPLACE" placeholder="REPLACE"></label>
+    <div class="form-actions"><button class="btn danger" type="submit">Restore and replace all data</button></div>
+  </form>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

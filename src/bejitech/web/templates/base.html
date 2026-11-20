@@ -4,37 +4,52 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#1F4E9B">
+<meta name="theme-color" content="#16284D">
 <title>{% block title %}{{ app_name }}{% endblock %}</title>
 <link rel="icon" href="/static/icon.png">
 <link rel="apple-touch-icon" href="/static/icon.png">
 <link rel="manifest" href="/static/manifest.webmanifest">
-<link rel="stylesheet" href="/static/style.css?v={{ version }}">
+<link rel="stylesheet" href="/static/style.css?v={{ version }}-2">
+<script src="/static/app.js?v={{ version }}-2" defer></script>
 </head>
 <body class="{% block body_class %}app{% endblock %}">
 {% block body %}
-<header class="topbar">
-  <a class="brand" href="/"><img src="/static/icon.png" alt="" width="28" height="28"><span>Bejitech</span></a>
-  <nav class="nav" aria-label="Main">
-    <a href="/" class="{{ 'on' if path == '/' }}">Dashboard</a>
-    <a href="/products" class="{{ 'on' if path.startswith('/products') }}">Products</a>
-    <span class="soon" title="Coming in the next phase">Inventory</span>
-    <span class="soon" title="Coming in the next phase">New sale</span>
-    <span class="soon" title="Coming in the next phase">Sales</span>
-    <span class="soon" title="Coming in the next phase">Customers</span>
-    <span class="soon" title="Coming in the next phase">Delivery notes</span>
-    <span class="soon" title="Coming in the next phase">Reports</span>
-  </nav>
-  <form method="post" action="/logout" class="who">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <span class="muted">{{ user }}</span>
-    <button class="btn small" type="submit">Sign out</button>
-  </form>
+{% set nav = [
+  ("/", "Dashboard", "▦"), ("/products", "Software Products", "▤"), ("/inventory", "License Inventory", "⚿"),
+  ("/sales/new", "New Sale", "＋"), ("/customers", "Customers", "☺"), ("/sales", "Sales History", "≡"),
+  ("/delivery-notes", "Delivery Notes", "✉"), ("/reports", "Reports", "▥"), ("/backup", "Backup & Restore", "⟲"),
+  ("/settings", "Settings", "⚙")] %}
+<input type="checkbox" id="menu-toggle" class="menu-toggle" aria-hidden="true">
+<header class="mobilebar">
+  <label for="menu-toggle" class="menu-btn" aria-label="Menu">☰</label>
+  <a class="mobile-brand" href="/">◆ BEJITECH</a>
+  <a class="btn small primary-inline" href="/sales/new">＋ Sale</a>
 </header>
+<aside class="sidebar">
+  <a class="side-brand" href="/"><strong>◆ BEJITECH</strong><span>License Manager</span></a>
+  <nav class="side-nav" aria-label="Main">
+    {% for href, label, icon in nav %}
+      {% set on = (path == href) if href in ("/", "/sales") else path.startswith(href) %}
+      {% if href == "/sales" and path.startswith("/sales/new") %}{% set on = False %}{% endif %}
+      {% if href == "/sales" and path.startswith("/sales/") and not path.startswith("/sales/new") %}{% set on = True %}{% endif %}
+      <a href="{{ href }}" class="{{ 'on' if on }}"{% if on %} aria-current="page"{% endif %}><span class="ico">{{ icon }}</span>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <div class="side-foot">
+    {% if backup_status %}<div class="side-note">{{ backup_status }}</div>{% endif %}
+    <div class="side-note">Signed in as {{ user }}</div>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="lock" type="submit">🔒 Lock</button>
+    </form>
+  </div>
+</aside>
+<label for="menu-toggle" class="scrim" aria-hidden="true"></label>
 <main class="page">
-{% block content %}{% endblock %}
+  {% for kind, msg in flashes %}<div class="flash {{ kind }}" role="status">{{ msg }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+  <footer class="foot muted">{{ app_name }} · web {{ version }}</footer>
 </main>
-<footer class="foot muted">{{ app_name }} · web {{ version }}</footer>
 {% endblock %}
 </body>
 </html>

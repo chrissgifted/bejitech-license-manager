@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_macros.html" import head, csrf_field %}
+{% block title %}Cancel {{ sale.sales_ref }} · Bejitech{% endblock %}
+{% block content %}
+{% call head("Cancel " ~ sale.sales_ref, sale.customer_name ~ " · " ~ sale.product_names ~ " × " ~ sale.quantity ~ " · " ~ format_money(sale.total_minor)) %}<a class="btn" href="/sales?id={{ sale.id }}">Back</a>{% endcall %}
+{% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+<form method="get" action="/sales/{{ sale.id }}/cancel" class="card narrow-card">
+  <label class="check"><input type="checkbox" name="not_delivered" value="1" {{ 'checked' if not_delivered }} data-autosubmit> The key was never delivered to the customer</label>
+  <noscript><button class="btn small" type="submit">Update</button></noscript>
+</form>
+<form method="post" action="/sales/{{ sale.id }}/cancel" class="card narrow-card">
+  {{ csrf_field(csrf) }}{% if not_delivered %}<input type="hidden" name="not_delivered" value="1">{% endif %}
+  <h2>What happens to each key</h2>
+  <p class="muted small">Activations go back to stock only where it is allowed and you tick it. Everything else is recorded as consumed, so the capacity stays used.</p>
+  {% for o in opts %}
+    <label class="option {{ 'disabled' if not o.can_release }}">
+      <input type="checkbox" name="release" value="{{ o.allocation_id }}" {{ 'checked' if o.can_release }} {{ 'disabled' if not o.can_release }}>
+      <span><strong>{{ o.inventory_ref }} ({{ o.masked_key[-5:] }}) × {{ o.quantity }}</strong> · {{ 'Return to stock' if o.can_release else 'Consumed' }}<br><span class="muted small">{{ o.reason }}</span></span>
+    </label>
+  {% endfor %}
+  <label class="block">Reason *<input name="reason" value="{{ reason }}" required placeholder="e.g. customer refund, entered by mistake"></label>
+  <div class="form-actions"><a class="btn" href="/sales?id={{ sale.id }}">Keep the sale</a><button class="btn danger" type="submit">Cancel sale</button></div>
+</form>
+{% endblock %}

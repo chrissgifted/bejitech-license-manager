@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "_macros.html" import head, csrf_field %}
+{% block title %}Sales History · Bejitech{% endblock %}
+{% block content %}
+{% call head("Sales History", rows|length ~ " sale(s) · completed total " ~ format_money(total)) %}
+  <a class="btn" href="/sales.csv{{ ('?' ~ query) if query }}">Export CSV</a>
+  <a class="btn primary" href="/sales/new">+ New sale</a>
+{% endcall %}
+<form method="get" action="/sales" class="toolbar">
+  <input type="search" name="q" value="{{ flt.q }}" placeholder="🔍 Search ref, customer, product, payment ref…" aria-label="Search">
+  <select name="status" data-autosubmit aria-label="Status"><option value="">All statuses</option>
+    <option value="COMPLETED" {{ 'selected' if flt.status == 'COMPLETED' }}>Completed</option>
+    <option value="CANCELLED" {{ 'selected' if flt.status == 'CANCELLED' }}>Cancelled</option></select>
+  <select name="payment" data-autosubmit aria-label="Payment"><option value="">All payments</option>
+    {% for v, l in methods %}<option value="{{ v }}" {{ 'selected' if flt.payment == v }}>{{ l }}</option>{% endfor %}</select>
+  <label class="muted small">From <input type="date" name="from" value="{{ flt.date_from }}"></label>
+  <label class="muted small">to <input type="date" name="to" value="{{ flt.date_to }}"></label>
+  <button class="btn" type="submit">Filter</button>
+  {% if query %}<a class="btn" href="/sales">Clear</a>{% endif %}
+</form>
+<div class="card flush">
+<div class="table-wrap tall"><table class="data stackable">
+  <thead><tr><th>Ref</th><th>Date</th><th>Customer</th><th>Product</th><th class="num">Qty</th><th class="num">Total (TZS)</th><th>Payment</th><th>Status</th></tr></thead>
+  <tbody>{% for s in rows %}
+    <tr data-href="/sales?{{ query }}{{ '&' if query }}id={{ s.id }}" class="{{ 'selected' if sel and sel.id == s.id }}">
+      <td class="nowrap" data-label="Ref"><a href="/sales?{{ query }}{{ '&' if query }}id={{ s.id }}">{{ s.sales_ref }}</a></td>
+      <td class="nowrap" data-label="Date">{{ display_date(s.sale_date) }}</td><td data-label="Customer">{{ s.customer_name }}</td>
+      <td data-label="Product">{{ s.product_names }}</td><td class="num" data-label="Qty">{{ s.quantity }}</td>
+      <td class="num" data-label="Total">{{ format_money(s.total_minor, with_code=False) }}</td>
+      <td data-label="Payment">{{ payment_label(s.payment_method) }}</td>
+      <td data-label="Status"><span class="state s-{{ s.status | lower }}">{{ s.status | title }}</span></td></tr>
+  {% else %}<tr><td colspan="8" class="muted empty">No sales match.</td></tr>{% endfor %}</tbody>
+</table></div>
+</div>
+{% if sel %}
+<section class="card detail" id="detail">
+  <div class="detail-head">
+    <h2>{{ sel.sales_ref }} · {{ sel.customer_name }} · {{ format_money(sel.total_minor) }}</h2>
+    <div class="actions">
+      {% if sel.delivery_note_id %}<a class="btn" href="/delivery-notes?id={{ sel.delivery_note_id }}">Delivery note {{ sel.delivery_note_number }}</a>
+        <a class="btn" href="/delivery-notes/{{ sel.delivery_note_id }}/pdf" target="_blank" rel="noopener">Open PDF</a>{% endif %}
+      {% if sel.status == 'COMPLETED' %}<a class="btn danger" href="/sales/{{ sel.id }}/cancel">Cancel sale…</a>{% endif %}
+    </div>
+  </div>
+  <p class="muted">{{ display_date(sel.sale_date) }} · {{ sel.product_names }} × {{ sel.quantity }} · Subtotal {{ format_money(sel.subtotal_minor) }}{% if sel.discount_minor %} − discount {{ format_money(sel.discount_minor) }}{% endif %}
+    · {{ payment_label(sel.payment_method) }}{% if sel.payment_reference %} ({{ sel.payment_reference }}){% endif %}
+    · <span class="state s-{{ sel.status | lower }}">{{ sel.status | title }}</span>{% if sel.cancel_reason %} · Reason: {{ sel.cancel_reason }}{% endif %}</p>
+  {% if sel.notes %}<p class="small">Notes: {{ sel.notes }}</p>{% endif %}
+  <h3>Keys allocated</h3>
+  <div class="table-wrap"><table class="data stackable compact">
+    <thead><tr><th>Inventory ref</th><th>Key</th><th class="num">Activations</th><th>Status</th><th>Confirmed</th><th></th></tr></thead>
+    <tbody>{% for a in sel.allocations %}
+      <tr><td data-label="Inventory ref"><a href="/inventory?id={{ a.license_id }}">{{ a.inventory_ref }}</a></td><td class="mono" data-label="Key">{{ a.masked_key }}</td>
+        <td class="num" data-label="Activations">{{ a.quantity }}</td><td data-label="Status"><span class="state s-{{ a.status | lower }}">{{ a.status | title }}</span></td>
+        <td data-label="Confirmed">{{ display_datetime(a.confirmed_at) if a.confirmed_at else '' }}</td>
+        <td class="row-actions">{% if a.status == 'ALLOCATED' and sel.status == 'COMPLETED' %}
+          <form method="post" action="/sales/allocations/{{ a.id }}/confirm" class="inline">{{ csrf_field(csrf) }}<input type="hidden" name="sale_id" value="{{ sel.id }}">
+            <button class="btn small" type="submit" title="The customer reports the activation worked">✓ Confirm activation</button></form>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+{% endblock %}

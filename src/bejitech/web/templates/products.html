@@ -1,32 +1,43 @@
 {% extends "base.html" %}
-{% block title %}Products · Bejitech{% endblock %}
+{% from "_macros.html" import head, csrf_field %}
+{% block title %}Software Products · Bejitech{% endblock %}
 {% block content %}
-<div class="head">
-  <div><h1>Software products</h1><p class="muted">{{ products | length }} product{{ '' if products|length == 1 else 's' }}</p></div>
-  <form method="get" action="/products" class="search">
-    <input type="search" name="q" value="{{ q }}" placeholder="Search name, version, edition…" aria-label="Search products">
-    <label class="check small"><input type="checkbox" name="archived" value="1" {{ 'checked' if archived }}> Show archived</label>
-    <button class="btn small" type="submit">Search</button>
-  </form>
-</div>
-<div class="products">
-{% for p in products %}
-  <article class="card product {{ 'archived' if p.is_archived }}">
-    <div class="logo">{% if p.logo_path %}<img src="/logo/{{ p.id }}" alt="" loading="lazy">{% else %}<span>{{ p.publisher[:1] }}</span>{% endif %}</div>
-    <div class="info">
-      <h2>{{ p.display_name }}</h2>
-      <p class="muted small">{{ p.publisher }} · {{ p.category }} · {{ p.platform }} · {{ p.license_type }}{% if p.is_archived %} · <strong>Archived</strong>{% endif %}</p>
-      <dl>
-        <div><dt>Price</dt><dd>{{ format_money(p.selling_price_minor) }}</dd></div>
-        <div><dt>Keys</dt><dd>{{ p.total_keys }}</dd></div>
-        <div class="{{ 'warn' if p.available_activations < p.low_stock_threshold }}"><dt>Available</dt><dd>{{ p.available_activations }}</dd></div>
-      </dl>
-      {% if p.download_url %}<p class="small">Download link: {{ p.download_label or 'set' }}{% if p.download_url_verified %} ✓ verified{% endif %}</p>
-      {% else %}<p class="small warn-text">No download link yet</p>{% endif %}
-    </div>
-  </article>
-{% else %}
-  <p class="muted">No products match.</p>
-{% endfor %}
+{% call head("Software Products", "What you sell: prices, logos, download links and instructions.") %}
+  <a class="btn primary" href="/products/new">+ Add product</a>
+{% endcall %}
+<form method="get" action="/products" class="toolbar">
+  <input type="search" name="q" value="{{ q }}" placeholder="🔍 Search name, publisher, version, edition…" aria-label="Search">
+  <label class="check"><input type="checkbox" name="archived" value="1" {{ 'checked' if archived }} data-autosubmit> Show archived</label>
+  <button class="btn" type="submit">Search</button>
+</form>
+<div class="card flush">
+<div class="table-wrap"><table class="data stackable">
+  <thead><tr><th></th><th>Product</th><th>Publisher</th><th>Category</th><th>Platform</th><th>Licence type</th>
+    <th class="num">Price (TZS)</th><th class="num">Keys</th><th class="num">Available</th><th>Download link</th><th></th></tr></thead>
+  <tbody>
+  {% for p in products %}
+    <tr class="{{ 'dim' if p.is_archived }}" data-href="/products/{{ p.id }}/edit">
+      <td class="logo-cell">{% if p.logo_path %}<img src="/logo/{{ p.id }}" alt="" width="32" height="32" loading="lazy">{% else %}<span class="badge">{{ p.publisher[:1] }}</span>{% endif %}</td>
+      <td data-label="Product"><a href="/products/{{ p.id }}/edit"><strong>{{ p.display_name }}</strong></a>{% if p.is_archived %} <span class="state s-disabled">Archived</span>{% endif %}</td>
+      <td data-label="Publisher">{{ p.publisher }}</td><td data-label="Category">{{ p.category }}</td>
+      <td data-label="Platform">{{ p.platform }}</td><td data-label="Licence type">{{ p.license_type }}</td>
+      <td class="num" data-label="Price">{{ format_money(p.selling_price_minor, with_code=False) }}</td>
+      <td class="num" data-label="Keys">{{ p.total_keys }}</td>
+      <td class="num {{ 'warn-text' if p.is_low_stock }}" data-label="Available">{{ p.available_activations }}</td>
+      <td data-label="Download link">{% if p.download_url %}{{ p.effective_download_label }}{% if p.download_url_verified %} <span class="ok">✓</span>{% endif %}{% else %}<span class="warn-text">Missing</span>{% endif %}</td>
+      <td class="row-actions">
+        <a class="btn small" href="/products/{{ p.id }}/edit">Edit</a>
+        <a class="btn small" href="/inventory/new?product={{ p.id }}">+ Keys</a>
+        <form method="post" action="/products/{{ p.id }}/archive" class="inline" {% if not p.is_archived %}data-confirm="Archive {{ p.display_name }}? It will be hidden from new sales."{% endif %}>
+          {{ csrf_field(csrf) }}<input type="hidden" name="archived" value="{{ '0' if p.is_archived else '1' }}">
+          <button class="btn small" type="submit">{{ 'Restore' if p.is_archived else 'Archive' }}</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="11" class="muted empty">No products match.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
 </div>
 {% endblock %}

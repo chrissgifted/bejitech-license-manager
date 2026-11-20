@@ -123,6 +123,36 @@ class EnvKeyStore:
         return "Server secret (BEJITECH_DEK)"
 
 
+class EnvFileKeyStore(EnvKeyStore):
+    """Web version on your own computer: like EnvKeyStore, but a restore of a desktop-app backup
+    may replace the key, which is then written back to the web.env file it came from."""
+
+    def __init__(self, env_file: Path):
+        self.env_file = Path(env_file)
+
+    def load(self) -> bytes | None:
+        # The file wins over the environment: it stays right after a restore, even across restarts.
+        if self.env_file.exists():
+            for line in self.env_file.read_text().splitlines():
+                if line.startswith(self.VAR + "="):
+                    os.environ[self.VAR] = line.split("=", 1)[1].strip()
+                    break
+        return super().load()
+
+    def save(self, key: bytes) -> None:
+        if self.load() == key:
+            return
+        value = base64.b64encode(key).decode()
+        lines = self.env_file.read_text().splitlines() if self.env_file.exists() else []
+        out = [ln for ln in lines if not ln.startswith(self.VAR + "=")] + [f"{self.VAR}={value}"]
+        self.env_file.write_text("\n".join(out) + "\n")
+        os.chmod(self.env_file, 0o600)
+        os.environ[self.VAR] = value
+
+    def describe(self) -> str:
+        return f"Key file on this computer ({self.env_file})"
+
+
 def default_keystore(data_root: Path) -> KeyStore:
     if os.environ.get("BEJITECH_KEYSTORE") == "env":
         return EnvKeyStore()

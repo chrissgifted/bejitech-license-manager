@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_macros.html" import head, csrf_field %}
+{% block title %}{{ 'Edit' if cust else 'Add' }} customer · Bejitech{% endblock %}
+{% block content %}
+{% call head(("Edit " ~ cust.full_name) if cust else "Add customer") %}<a class="btn" href="{{ next_url or '/customers' }}">Cancel</a>{% endcall %}
+{% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+<form method="post" action="/customers/save" class="card narrow-card">
+  {{ csrf_field(csrf) }}<input type="hidden" name="id" value="{{ cust.id if cust else '' }}"><input type="hidden" name="next" value="{{ next_url }}">
+  <div class="form-grid">
+    <label>Full name *<input name="full_name" value="{{ form.full_name or '' }}" required autofocus></label>
+    <label>Organisation<input name="organization" value="{{ form.organization or '' }}"></label>
+    <label>Phone<input name="phone" type="tel" value="{{ form.phone or '' }}" placeholder="+255 …"></label>
+    <label>Email<input name="email" type="email" value="{{ form.email or '' }}"></label>
+  </div>
+  <label class="block">Address<input name="address" value="{{ form.address or '' }}"></label>
+  <label class="block">Notes<textarea name="notes" rows="3">{{ form.notes or '' }}</textarea></label>
+  <div class="form-actions"><a class="btn" href="{{ next_url or '/customers' }}">Cancel</a><button class="btn primary" type="submit">Save customer</button></div>
+</form>
+{% endblock %}

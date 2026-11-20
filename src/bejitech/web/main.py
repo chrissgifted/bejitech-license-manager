@@ -30,7 +30,7 @@ from bejitech.core.money import format_money
 from bejitech.core.timeutil import display_date, display_datetime
 from bejitech.db.engine import Database
 from bejitech.db.migrations import migrate
-from bejitech.security.keystore import EnvKeyStore, KeyStore
+from bejitech.security.keystore import EnvFileKeyStore, EnvKeyStore, KeyStore
 from bejitech.services.common import get_setting
 from bejitech.services.context import AppContext
 from bejitech.web.config import WebConfig
@@ -68,12 +68,21 @@ class WebState:
                               database_url=config.database_url).ensure()
         migrate(self.paths.database_target, self.paths.backups)
         self.db = Database(self.paths.database_target)
-        self.keystore = keystore or EnvKeyStore()
+        if keystore is None:
+            env_file = config.data_dir / "web.env"
+            keystore = EnvFileKeyStore(env_file) if config.local_mode and env_file.exists() else EnvKeyStore()
+        self.keystore = keystore
         self._cipher = None
 
     def ctx(self, user_id: int | None = None) -> AppContext:
         return AppContext(paths=self.paths, db=self.db, keystore=self.keystore,
                           cipher=self.cipher(), user_id=user_id)
+
+    def reset_database(self) -> None:
+        """After a restore replaced the database file: reconnect and forget the cached cipher."""
+        self.db.dispose()
+        self.db = Database(self.paths.database_target)
+        self._cipher = None
 
     def cipher(self):
         if self._cipher is None:
@@ -162,6 +171,9 @@ def create_app(config: WebConfig | None = None, keystore: KeyStore | None = None
 
     def render(request: Request, name: str, status: int = 200, **ctx) -> HTMLResponse:
         ctx.setdefault("user", request.session.get("name"))
+        ctx.setdefault("flashes", request.session.pop("flash", []))
+        if request.session.get("stage") == STAGE_FULL and "backup_status" not in ctx:
+            ctx["backup_status"] = _backup_status(state)
         return templates.TemplateResponse(request, name, {"csrf": csrf_token(request), "path": request.url.path,
                                                           **ctx}, status_code=status)
 
@@ -337,36 +349,28 @@ def create_app(config: WebConfig | None = None, keystore: KeyStore | None = None
         return RedirectResponse("/login", status_code=303)
 
     # ---------- pages ----------
-    @app.get("/", response_class=HTMLResponse)
-    def dashboard(request: Request, period: str = "all"):
-        uid = require_user(request)
-        ctx = state.ctx(uid)
-        period = period if period in PERIODS else "all"
-        d = ctx.reports.dashboard(*period_range(period))
-        sales = ctx.sales.list_sales()[:10]
-        return render(request, "dashboard.html", d=d, sales=sales, periods=PERIODS, period=period,
-                      today=date.today().isoformat())
+    from types import SimpleNamespace
 
-    @app.get("/products", response_class=HTMLResponse)
-    def products(request: Request, q: str = "", archived: int = 0):
-        uid = require_user(request)
-        rows = state.ctx(uid).catalogue.list_products(search=q.strip(), include_archived=bool(archived))
-        return render(request, "products.html", products=rows, q=q, archived=archived)
-
-    @app.get("/logo/{product_id}")
-    def logo(request: Request, product_id: int):
-        uid = require_user(request)
-        ctx = state.ctx(uid)
-        try:
-            p = ctx.catalogue.get_product(product_id)
-        except BejitechError:
-            return Response(status_code=404)
-        f = ctx.catalogue.logo_file(p.logo_path)
-        if not f:
-            return Response(status_code=404)
-        return FileResponse(f, headers={"Cache-Control": "private, max-age=3600"})
+    from bejitech.web import pages
+    pages.register(app, SimpleNamespace(state=state, config=config, render=render, require_user=require_user,
+                                        check_csrf=check_csrf, csrf_token=csrf_token))
 
     return app
+
+
+def _backup_status(state: "WebState") -> str:
+    if state.db.is_postgres:
+        return "Backups: daily by the host"
+    try:
+        hist = state.ctx().backup.history()
+    except Exception:  # noqa: BLE001
+        return ""
+    last = next((b for b in hist if b["verified"]), None)
+    return f"Last backup: {display_datetime(last['created_at'])} ✓" if last else "⚠ No backup yet"
+
+
+def flash(request: Request, message: str, kind: str = "ok") -> None:
+    request.session["flash"] = request.session.get("flash", []) + [[kind, message]]
 
 
 def _enrol_view(state: WebState, request: Request, secret: str) -> dict:

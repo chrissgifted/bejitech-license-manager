@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "_macros.html" import head, csrf_field %}
+{% block title %}Settings · Bejitech{% endblock %}
+{% block content %}
+{% call head("Settings") %}{% endcall %}
+<div class="tabs">{% for key, label in tabs %}<a class="tab {{ 'on' if key == tab }}" href="/settings?tab={{ key }}">{{ label }}</a>{% endfor %}</div>
+
+{% if tab in ('business', 'sales', 'delivery') %}
+<form method="post" action="/settings/save" class="card narrow-card">
+  {{ csrf_field(csrf) }}<input type="hidden" name="tab" value="{{ tab }}">
+  {% if tab == 'business' %}
+    <div class="form-grid">
+      <label>Seller name<input name="seller.name" value="{{ s['seller.name'] }}"></label>
+      <label>Business name<input name="seller.business_name" value="{{ s['seller.business_name'] }}"></label>
+      <label>Phone<input name="seller.phone" value="{{ s['seller.phone'] }}"></label>
+      <label>Email<input name="seller.email" type="email" value="{{ s['seller.email'] }}"></label>
+    </div>
+    <label class="block">Address<input name="seller.address" value="{{ s['seller.address'] }}"></label>
+    <p class="muted small">These details appear on new delivery notes. Notes already issued keep the details they were issued with.</p>
+  {% elif tab == 'sales' %}
+    <div class="form-grid">
+      <label>Default currency<input value="TZS (Tanzanian Shillings)" disabled></label>
+      <label>USD → TZS exchange rate<input name="currency.usd_rate" inputmode="decimal" value="{{ s['currency.usd_rate'] }}"></label>
+      <label>Default low-stock level for new products<input name="inventory.default_low_stock" type="number" min="0" value="{{ s['inventory.default_low_stock'] }}"></label>
+    </div>
+  {% else %}
+    <label class="check"><input type="checkbox" name="delivery.include_signature" value="1" {{ 'checked' if s['delivery.include_signature'] == '1' }}> Show the signature section on delivery notes</label>
+    <label class="block">Footer text<textarea name="delivery.footer" rows="3">{{ s['delivery.footer'] }}</textarea></label>
+  {% endif %}
+  <div class="form-actions"><button class="btn primary" type="submit">Save</button></div>
+</form>
+
+{% elif tab == 'types' %}
+<form method="post" action="/settings/types" class="card">
+  {{ csrf_field(csrf) }}
+  <p class="muted small">Defaults applied to newly added keys. Turn on only when the licence terms allow it.</p>
+  <div class="table-wrap"><table class="data stackable">
+    <thead><tr><th>Licence type</th><th>Several customers per key</th><th>Reassignable after cancellation</th><th>Default activations</th></tr></thead>
+    <tbody>{% for t in types %}
+      <tr><td data-label="Licence type"><strong>{{ t.name }}</strong><br><span class="muted small">{{ t.description or '' }}</span></td>
+        <td data-label="Several customers"><input type="checkbox" name="multi_{{ t.id }}" value="1" {{ 'checked' if t.allows_multiple_customers }} aria-label="Several customers"></td>
+        <td data-label="Reassignable"><input type="checkbox" name="reassign_{{ t.id }}" value="1" {{ 'checked' if t.reassignable }} aria-label="Reassignable"></td>
+        <td data-label="Default activations"><input type="number" name="cap_{{ t.id }}" min="1" value="{{ t.default_capacity }}" class="narrow"></td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  <div class="form-actions"><button class="btn primary" type="submit">Save licence types</button></div>
+</form>
+
+{% elif tab == 'security' %}
+<div class="split">
+  <form method="post" action="/settings/save" class="card">
+    {{ csrf_field(csrf) }}<input type="hidden" name="tab" value="security">
+    <h2>Automatic sign-out</h2>
+    <label>Sign out after inactivity (minutes)<input type="number" name="security.autolock_minutes" min="5" max="240" value="{{ s['security.autolock_minutes'] }}"></label>
+    <p class="muted small">Encryption key stored in: {{ keystore }}. Two-step login is on for your account.</p>
+    <div class="form-actions"><button class="btn primary" type="submit">Save</button></div>
+  </form>
+  <form method="post" action="/settings/password" class="card">
+    {{ csrf_field(csrf) }}
+    <h2>Change password</h2>
+    <label>Current password<input type="password" name="current" autocomplete="current-password" required></label>
+    <label>New password<input type="password" name="new1" minlength="8" autocomplete="new-password" required></label>
+    <label>Confirm new password<input type="password" name="new2" minlength="8" autocomplete="new-password" required></label>
+    <div class="form-actions"><button class="btn primary" type="submit">Change password</button></div>
+  </form>
+  <form method="post" action="/settings/recovery" class="card">
+    {{ csrf_field(csrf) }}
+    <h2>Change recovery passphrase</h2>
+    <label>Your password<input type="password" name="current" autocomplete="current-password" required></label>
+    <label>New passphrase (12+ characters)<input type="password" name="new1" minlength="12" autocomplete="off" required></label>
+    <label>Confirm new passphrase<input type="password" name="new2" minlength="12" autocomplete="off" required></label>
+    <div class="form-actions"><button class="btn" type="submit">Change passphrase</button></div>
+  </form>
+</div>
+
+{% elif tab == 'audit' %}
+<form method="get" action="/settings" class="toolbar"><input type="hidden" name="tab" value="audit">
+  <input type="search" name="q" value="{{ q }}" placeholder="🔍 Search actions…" aria-label="Search"><button class="btn" type="submit">Search</button></form>
+<div class="card flush"><div class="table-wrap tall"><table class="data stackable compact">
+  <thead><tr><th>When</th><th>User</th><th>Action</th><th>Item</th><th>Details</th></tr></thead>
+  <tbody>{% for a in audit %}
+    <tr><td class="nowrap" data-label="When">{{ display_datetime(a.occurred_at) }}</td><td data-label="User">{{ a.user or '' }}</td>
+      <td data-label="Action">{{ a.action }}</td><td data-label="Item">{{ a.entity }}</td><td data-label="Details" class="small wrap">{{ a.details or '' }}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted empty">Nothing found.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+
+{% else %}
+<section class="card narrow-card">
+  <p><strong>{{ app_name }}</strong> · web version {{ version }}</p>
+  <p class="muted small">Data folder: {{ data_dir }}<br>Database: {{ database }}</p>
+  <p class="muted small">Built with Python, FastAPI, SQLAlchemy, ReportLab and the same business rules as the desktop app.</p>
+</section>
+{% endif %}
+{% endblock %}

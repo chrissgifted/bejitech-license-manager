@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "_macros.html" import head, csrf_field %}
+{% block title %}{{ 'Edit' if product else 'Add' }} product · Bejitech{% endblock %}
+{% block content %}
+{% call head(("Edit " ~ product.display_name) if product else "Add software product") %}<a class="btn" href="/products">Cancel</a>{% endcall %}
+{% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+<form method="post" action="/products/save" enctype="multipart/form-data" class="form-cols">
+  {{ csrf_field(csrf) }}<input type="hidden" name="id" value="{{ form.id or '' }}">
+  <datalist id="dl-publishers">{% for x in publishers %}<option value="{{ x }}">{% endfor %}</datalist>
+  <datalist id="dl-categories">{% for x in categories %}<option value="{{ x }}">{% endfor %}</datalist>
+  <datalist id="dl-lines">{% for x in lines %}<option value="{{ x }}">{% endfor %}</datalist>
+  <datalist id="dl-platforms">{% for x in platforms %}<option value="{{ x }}">{% endfor %}</datalist>
+  <section class="card">
+    <h2>Product</h2>
+    <div class="form-grid">
+      <label>Publisher *<input name="publisher" list="dl-publishers" value="{{ form.publisher or '' }}" required></label>
+      <label>Category *<input name="category" list="dl-categories" value="{{ form.category or '' }}" required placeholder="e.g. Office Suites"></label>
+      <label>Product *<input name="line" list="dl-lines" value="{{ form.line or '' }}" required placeholder="e.g. Microsoft Office, Windows, Visio" data-name-part></label>
+      <label>Version *<input name="version" value="{{ form.version or '' }}" required placeholder="e.g. 2024" data-name-part></label>
+      <label>Edition *<input name="edition" value="{{ form.edition or '' }}" required placeholder="e.g. Professional Plus" data-name-part></label>
+      <label>Platform<input name="platform" list="dl-platforms" value="{{ form.platform or 'Windows' }}"></label>
+      <label>Licence type *<select name="license_type_id" required>
+        {% for t in types %}<option value="{{ t.id }}" {{ 'selected' if (form.license_type_id|string) == (t.id|string) }}>{{ t.name }}</option>{% endfor %}
+      </select></label>
+      <label>Display name<input name="display_name" value="{{ form.display_name or '' }}" placeholder="Filled in from product, version and edition" data-display-name></label>
+      <label>SKU / internal code<input name="sku" value="{{ form.sku or '' }}"></label>
+      <label>Low-stock alert below<input name="low" type="number" min="0" value="{{ form.low if form.low is not none else 3 }}"></label>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Prices</h2>
+    <div class="form-grid">
+      <label>Typical purchase price
+        <span class="input-row"><input name="cost" inputmode="decimal" value="{{ form.cost or '' }}" placeholder="0">
+        <select name="cost_currency" class="narrow">{% for c in ("TZS", "USD") %}<option {{ 'selected' if form.cost_currency == c }}>{{ c }}</option>{% endfor %}</select></span></label>
+      <label>Selling price (TZS)<input name="price" inputmode="decimal" value="{{ form.price or '' }}" placeholder="0"></label>
+    </div>
+    <p class="muted small">The actual cost of each key is recorded when you add it to inventory.</p>
+    <h2>Logo</h2>
+    <div class="logo-edit">
+      <div class="logo-preview">{% if product and product.logo_path %}<img src="/logo/{{ product.id }}" alt="Current logo">{% else %}<span class="muted">No logo</span>{% endif %}</div>
+      <div class="stack-sm">
+        <input type="file" name="logo" accept="image/png,image/jpeg">
+        {% if product and product.logo_path %}<label class="check"><input type="checkbox" name="remove_logo" value="1"> Remove logo</label>{% endif %}
+        <p class="muted small">Use only logos you are allowed to use. PNG or JPG, up to 5 MB. Its colour sets the delivery note's accent colour.</p>
+      </div>
+    </div>
+  </section>
+  <section class="card span-2">
+    <h2>Download and instructions (shown on delivery notes)</h2>
+    <div class="form-grid">
+      <label>Download URL<input name="url" type="url" value="{{ form.url or '' }}" placeholder="https://…  (prefer official, verified sources)"></label>
+      <label>Link text<input name="label" value="{{ form.label or '' }}" placeholder="Left blank → “Download <product name>”"></label>
+    </div>
+    <label class="check"><input type="checkbox" name="verified" value="1" {{ 'checked' if form.verified }}> I have checked this link</label>
+    <div class="form-grid">
+      <label>Installation instructions<textarea name="install" rows="6">{{ form.install or '' }}</textarea></label>
+      <label>Activation instructions<textarea name="activate" rows="6">{{ form.activate or '' }}</textarea></label>
+    </div>
+  </section>
+  <div class="form-actions span-2"><a class="btn" href="/products">Cancel</a><button class="btn primary" type="submit">Save product</button></div>
+</form>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_macros.html" import head, csrf_field %}
+{% block title %}Customers · Bejitech{% endblock %}
+{% block content %}
+{% call head("Customers", "Who bought what, with each customer's purchase history.") %}
+  <a class="btn primary" href="/customers/new">+ Add customer</a>
+{% endcall %}
+<form method="get" action="/customers" class="toolbar">
+  <input type="search" name="q" value="{{ q }}" placeholder="🔍 Search name, organisation, phone, email, CUS ref…" aria-label="Search">
+  <label class="check"><input type="checkbox" name="archived" value="1" {{ 'checked' if archived }} data-autosubmit> Show archived</label>
+  <button class="btn" type="submit">Search</button>
+</form>
+<div class="card flush">
+<div class="table-wrap tall"><table class="data stackable">
+  <thead><tr><th>Ref</th><th>Name</th><th>Organisation</th><th>Phone</th><th>Email</th><th class="num">Purchases</th><th class="num">Total spent (TZS)</th><th></th></tr></thead>
+  <tbody>
+  {% for c in rows %}
+    <tr data-href="/customers?id={{ c.id }}" class="{{ 'selected' if sel and sel.id == c.id }} {{ 'dim' if c.is_archived }}">
+      <td class="nowrap" data-label="Ref"><a href="/customers?id={{ c.id }}">{{ c.customer_ref }}</a></td>
+      <td data-label="Name"><strong>{{ c.full_name }}</strong>{% if c.is_archived %} <span class="state s-disabled">Archived</span>{% endif %}</td>
+      <td data-label="Organisation">{{ c.organization or '' }}</td><td class="nowrap" data-label="Phone">{{ c.phone or '' }}</td>
+      <td data-label="Email">{{ c.email or '' }}</td><td class="num" data-label="Purchases">{{ c.purchases }}</td>
+      <td class="num" data-label="Total spent">{{ format_money(c.total_spent_minor, with_code=False) }}</td>
+      <td class="row-actions"><a class="btn small" href="/customers/{{ c.id }}/edit">Edit</a>
+        <a class="btn small" href="/sales/new?customer={{ c.id }}">+ Sale</a></td>
+    </tr>
+  {% else %}<tr><td colspan="8" class="muted empty">No customers yet. <a href="/customers/new">Add a customer</a>.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+</div>
+{% if sel %}
+<section class="card detail" id="detail">
+  <div class="detail-head">
+    <h2>Purchase history: {{ sel.full_name }}</h2>
+    <form method="post" action="/customers/{{ sel.id }}/archive" class="inline" {% if not sel.is_archived %}data-confirm="Archive {{ sel.full_name }}?"{% endif %}>
+      {{ csrf_field(csrf) }}<input type="hidden" name="archived" value="{{ '0' if sel.is_archived else '1' }}">
+      <button class="btn small" type="submit">{{ 'Restore customer' if sel.is_archived else 'Archive customer' }}</button>
+    </form>
+  </div>
+  <p class="muted">{{ sel.customer_ref }}{% if sel.organization %} · {{ sel.organization }}{% endif %}{% if sel.phone %} · {{ sel.phone }}{% endif %}{% if sel.email %} · {{ sel.email }}{% endif %}{% if sel.address %} · {{ sel.address }}{% endif %}</p>
+  {% if sel.notes %}<p class="small">Notes: {{ sel.notes }}</p>{% endif %}
+  <div class="table-wrap"><table class="data stackable compact">
+    <thead><tr><th>Ref</th><th>Date</th><th>Product</th><th class="num">Qty</th><th class="num">Total (TZS)</th><th>Delivery note</th><th>Status</th></tr></thead>
+    <tbody>{% for s in hist %}
+      <tr data-href="/sales?id={{ s.id }}"><td data-label="Ref"><a href="/sales?id={{ s.id }}">{{ s.sales_ref }}</a></td><td class="nowrap" data-label="Date">{{ display_date(s.sale_date) }}</td>
+        <td data-label="Product">{{ s.product_names }}</td><td class="num" data-label="Qty">{{ s.quantity }}</td>
+        <td class="num" data-label="Total">{{ format_money(s.total_minor, with_code=False) }}</td>
+        <td data-label="Delivery note">{% if s.delivery_note_id %}<a href="/delivery-notes?id={{ s.delivery_note_id }}">{{ s.delivery_note_number }}</a>{% endif %}</td>
+        <td data-label="Status"><span class="state s-{{ s.status | lower }}">{{ s.status | title }}</span></td></tr>
+    {% else %}<tr><td colspan="7" class="muted empty">No purchases yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% from "_macros.html" import head, csrf_field %}
+{% block title %}License Inventory · Bejitech{% endblock %}
+{% block content %}
+{% call head("License Inventory", "Purchased keys and their activation balances. Keys are encrypted and masked.") %}
+  <a class="btn primary" href="/inventory/new">+ Add licence keys</a>
+{% endcall %}
+<form method="get" action="/inventory" class="toolbar">
+  <input type="search" name="q" value="{{ q }}" placeholder="🔍 Search ref, product, supplier, last 5 characters…" aria-label="Search">
+  <select name="product" data-autosubmit aria-label="Product">
+    <option value="">All products</option>
+    {% for p in products %}<option value="{{ p.id }}" {{ 'selected' if p.id == product }}>{{ p.display_name }}</option>{% endfor %}
+  </select>
+  <input type="hidden" name="state" value="{{ state }}">
+  <button class="btn" type="submit">Search</button>
+</form>
+<div class="chips">
+  {% for value, label in states %}
+    <a class="chip {{ 'on' if value == state }}" href="/inventory?{{ base }}{{ '&' if base }}state={{ value }}">{{ label }}</a>
+  {% endfor %}
+</div>
+<div class="card flush">
+<div class="table-wrap tall"><table class="data stackable">
+  <thead><tr><th>Ref</th><th>Product</th><th>Key</th><th>Supplier</th><th class="num">Capacity</th><th class="num">Allocated</th>
+    <th class="num">Confirmed</th><th class="num">Remaining</th><th>Expires</th><th>State</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr data-href="/inventory?{{ query ~ "&" if query }}id={{ r.id }}" class="{{ 'selected' if sel and sel.id == r.id }}">
+      <td class="nowrap" data-label="Ref"><a href="/inventory?{{ query ~ "&" if query }}id={{ r.id }}">{{ r.inventory_ref }}</a></td>
+      <td data-label="Product">{{ r.product_name }}</td>
+      <td class="nowrap mono" data-label="Key">•••• {{ r.key_suffix }}</td>
+      <td data-label="Supplier">{{ r.supplier or '—' }}</td>
+      <td class="num" data-label="Capacity">{{ r.permitted_capacity }}</td>
+      <td class="num" data-label="Allocated">{{ r.allocated_qty }}</td>
+      <td class="num" data-label="Confirmed">{{ r.confirmed_qty }}</td>
+      <td class="num" data-label="Remaining"><strong>{{ r.remaining_qty }}</strong></td>
+      <td class="nowrap" data-label="Expires">{{ display_date(r.expiration_date) }}</td>
+      <td data-label="State"><span class="state s-{{ r.stock_state | lower }}">{{ state_label(r.stock_state) }}</span></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="10" class="muted empty">No licence keys match. <a href="/inventory/new">Add licence keys</a>.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+</div>
+
+{% if sel %}
+<section class="card detail" id="detail">
+  <h2>{{ sel.inventory_ref }} · {{ sel.product_name }} · <span class="mono">{{ revealed.key if revealed else sel.masked_key }}</span></h2>
+  <p class="muted">Supplier: {{ sel.supplier or '—' }} · Bought {{ display_date(sel.purchase_date) }} for {{ format_money(sel.purchase_cost_tzs) }}{% if sel.purchase_currency == 'USD' %} ({{ format_money(sel.purchase_cost_minor, 'USD') }} @ {{ sel.exchange_rate_to_tzs }}){% endif %}
+    · Multi-customer: {{ 'Yes' if sel.allows_multiple_customers else 'No' }} · Reassignable: {{ 'Yes' if sel.reassignable else 'No' }} · Expires: {{ display_date(sel.expiration_date) }}
+    {% if sel.restrictions %} · Restrictions: {{ sel.restrictions }}{% endif %}
+    {% if sel.status == 'DISABLED' %} · <strong class="bad-text">Disabled: {{ sel.disabled_reason }}</strong>{% endif %}</p>
+  {% if sel.notes %}<p class="small">Notes: {{ sel.notes }}</p>{% endif %}
+
+  {% if revealed %}
+  <div class="reveal-box">
+    <code class="key-text" id="revealed-key">{{ revealed.key }}</code>
+    <button class="btn small" type="button" data-copy="#revealed-key" data-copied-url="/inventory/{{ sel.id }}/copied" data-csrf="{{ csrf }}">Copy key</button>
+    <span class="muted small" data-hide-after="30">Hidden again when you leave or refresh this page.</span>
+  </div>
+  {% endif %}
+
+  <div class="actions">
+    {% if not revealed %}
+    <form method="post" action="/inventory/{{ sel.id }}/reveal" class="inline">
+      {{ csrf_field(csrf) }}
+      {% if need_password %}<input type="password" name="password" placeholder="Your password" autocomplete="current-password" required aria-label="Password to reveal">{% endif %}
+      <button class="btn" type="submit">👁 Reveal / copy key</button>
+    </form>
+    {% endif %}
+    <a class="btn" href="/inventory/{{ sel.id }}/edit">Edit</a>
+    <details class="pop">
+      <summary class="btn">Adjust capacity…</summary>
+      <form method="post" action="/inventory/{{ sel.id }}/capacity" class="pop-body">
+        {{ csrf_field(csrf) }}
+        <label>New permitted activations<input type="number" name="capacity" min="{{ [1, sel.allocated_qty]|max }}" value="{{ sel.permitted_capacity }}" required></label>
+        <label>Reason *<input name="reason" required placeholder="e.g. supplier corrected the count"></label>
+        <button class="btn primary" type="submit">Save capacity</button>
+      </form>
+    </details>
+    {% if sel.status == 'DISABLED' %}
+      <form method="post" action="/inventory/{{ sel.id }}/disable" class="inline">{{ csrf_field(csrf) }}<input type="hidden" name="disable" value="0"><button class="btn" type="submit">Enable</button></form>
+    {% else %}
+    <details class="pop">
+      <summary class="btn">Disable…</summary>
+      <form method="post" action="/inventory/{{ sel.id }}/disable" class="pop-body">
+        {{ csrf_field(csrf) }}<input type="hidden" name="disable" value="1">
+        <label>Reason *<input name="reason" required placeholder="e.g. key blocked by Microsoft"></label>
+        <button class="btn danger" type="submit">Disable key</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+
+  <h3>Allocation history</h3>
+  <div class="table-wrap"><table class="data stackable compact">
+    <thead><tr><th>When</th><th>Event</th><th class="num">Change</th><th class="num">Allocated</th><th>Customer</th><th>Sale</th><th>Note</th></tr></thead>
+    <tbody>
+    {% for h in hist %}
+      <tr><td class="nowrap" data-label="When">{{ display_datetime(h.created_at) }}</td><td data-label="Event">{{ h.event_type | replace('_', ' ') | title }}</td>
+        <td class="num" data-label="Change">{{ '%+d' % h.qty_delta if h.qty_delta else '' }}</td>
+        <td class="num" data-label="Allocated">{{ h.allocated_before }} → {{ h.allocated_after }}</td>
+        <td data-label="Customer">{{ h.customer or '' }}</td><td data-label="Sale">{{ h.sales_ref or '' }}</td><td data-label="Note">{{ h.note or '' }}</td></tr>
+    {% else %}<tr><td colspan="7" class="muted empty">No allocations yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+{% endblock %}

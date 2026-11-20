@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_macros.html" import head, csrf_field %}
+{% block title %}New Sale · Bejitech{% endblock %}
+{% block content %}
+{% call head("New Sale", "Customer → product → recommended key → payment → delivery note. The reference is assigned when the sale is saved.") %}{% endcall %}
+{% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+<form method="post" action="/sales/new" class="sale-grid" id="sale-form">
+  {{ csrf_field(csrf) }}
+  <div class="sale-left">
+    <section class="card">
+      <h2><span class="step">1</span> Customer</h2>
+      <div class="input-row">
+        <select name="customer" required data-customer>
+          <option value="">Choose a customer…</option>
+          {% for c in customers %}<option value="{{ c.id }}" data-info="{{ c.customer_ref }} · {{ c.purchases }} previous purchase(s)" {{ 'selected' if c.id == customer }}>{{ c.label }}</option>{% endfor %}
+        </select>
+        <a class="btn" href="/customers/new?next=/sales/new">+ New customer</a>
+      </div>
+      <p class="muted small" data-customer-info>Choose or add a customer.</p>
+    </section>
+    <section class="card">
+      <h2><span class="step">2</span> Product and quantity</h2>
+      <div class="form-grid">
+        <label>Product<select name="product" required data-product>
+          {% for p in products %}<option value="{{ p.id }}" data-price="{{ money_input(p.selling_price_minor) }}" data-stock="In stock: {{ p.available_activations }} activation(s) across {{ p.total_keys }} key(s)" {{ 'selected' if p.id == product }}>{{ p.display_name }}  ({{ p.available_activations }} available)</option>{% endfor %}
+        </select></label>
+        <label>Activations<input type="number" name="qty" min="1" value="{{ form.qty or 1 }}" required data-qty></label>
+      </div>
+      <p class="muted small" data-stock-info></p>
+    </section>
+    <section class="card">
+      <h2><span class="step">3</span> Licence key</h2>
+      <input type="hidden" name="plan" value="" data-plan>
+      <div class="options" data-options><p class="muted">Choose a customer and a product.</p></div>
+      <p class="small" data-after></p>
+    </section>
+  </div>
+  <div class="sale-right">
+    <section class="card">
+      <h2><span class="step">4</span> Price and payment</h2>
+      <div class="form-grid one">
+        <label>Unit price (TZS)<input name="price" inputmode="decimal" value="{{ form.price or '' }}" class="num-input" data-price></label>
+        <label>Discount (TZS)<input name="discount" inputmode="decimal" value="{{ form.discount or '' }}" placeholder="0" class="num-input" data-discount></label>
+        <div class="total-row"><span>Total</span><strong data-total>TZS 0</strong></div>
+        <label>Payment method<select name="payment">
+          {% for v, l in methods %}<option value="{{ v }}" {{ 'selected' if (form.payment or 'MOBILE_MONEY') == v }}>{{ l }}</option>{% endfor %}
+        </select></label>
+        <label>Payment reference<input name="pay_ref" value="{{ form.pay_ref or '' }}" placeholder="e.g. M-Pesa / bank transaction ID"></label>
+        <label>Sale date<input type="date" name="sale_date" value="{{ form.sale_date or today }}" required></label>
+        <label>Notes<input name="notes" value="{{ form.notes or '' }}"></label>
+      </div>
+    </section>
+    <button class="btn primary big" type="submit" data-complete disabled>Complete sale and create delivery note</button>
+  </div>
+</form>
+{% endblock %}
