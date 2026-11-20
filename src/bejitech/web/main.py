@@ -165,6 +165,19 @@ def create_app(config: WebConfig | None = None, keystore: KeyStore | None = None
         return templates.TemplateResponse(request, name, {"csrf": csrf_token(request), "path": request.url.path,
                                                           **ctx}, status_code=status)
 
+    def from_this_computer(request: Request) -> bool:
+        """Local runs only: the browser is on the computer running the app."""
+        host = request.client.host if request.client else ""
+        return config.local_mode and host in ("127.0.0.1", "::1", "localhost")
+
+    def setup_code_ok(request: Request, typed: str) -> bool:
+        if from_this_computer(request):
+            return True
+        typed = typed.strip().strip('"').strip("'")
+        if typed.upper().startswith("BEJITECH_SETUP_TOKEN="):
+            typed = typed.split("=", 1)[1].strip()
+        return bool(config.setup_token) and hmac.compare_digest(config.setup_token, typed)
+
     def client_key(request: Request) -> str:
         return request.client.host if request.client else "unknown"
 
@@ -208,7 +221,7 @@ def create_app(config: WebConfig | None = None, keystore: KeyStore | None = None
     def setup_form(request: Request):
         if state.ctx().auth.has_users():
             return RedirectResponse("/login", status_code=303)
-        return render(request, "setup.html", error=None, form={})
+        return render(request, "setup.html", error=None, form={}, need_code=not from_this_computer(request))
 
     @app.post("/setup", response_class=HTMLResponse)
     def setup_submit(request: Request, csrf: str = Form(""), setup_token: str = Form(""),
@@ -222,18 +235,23 @@ def create_app(config: WebConfig | None = None, keystore: KeyStore | None = None
         error = None
         if not limiter.allow("setup:" + client_key(request)):
             error = "Too many attempts. Please wait a few minutes."
-        elif not config.setup_token or not hmac.compare_digest(config.setup_token, setup_token.strip()):
-            error = "The setup code is not correct. It is the BEJITECH_SETUP_TOKEN value on the server."
+        elif not setup_code_ok(request, setup_token):
+            error = ("The setup code is not correct. Copy it exactly from the Terminal window (the line "
+                     "'Setup code'), or open this page on the computer running the app."
+                     if config.local_mode else
+                     "The setup code is not correct. It is the BEJITECH_SETUP_TOKEN value on the server.")
         elif password != password2:
             error = "The two passwords do not match."
         elif state.keystore.load() is None:
             error = "The server's encryption key (BEJITECH_DEK) is not set yet."
         if error:
-            return render(request, "setup.html", status=400, error=error, form=form)
+            return render(request, "setup.html", status=400, error=error, form=form,
+                          need_code=not from_this_computer(request))
         try:
             ctx.auth.create_admin(display_name, username, password, recovery)
         except BejitechError as exc:
-            return render(request, "setup.html", status=400, error=str(exc), form=form)
+            return render(request, "setup.html", status=400, error=str(exc), form=form,
+                          need_code=not from_this_computer(request))
         state._cipher = None
         start_stage(request, ctx.user_id, ctx.auth.display_name, STAGE_ENROL)
         return RedirectResponse("/setup/two-step", status_code=303)

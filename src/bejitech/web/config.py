@@ -8,6 +8,8 @@ BEJITECH_SECRET_KEY     signs the login cookie; any long random text (python -m 
 BEJITECH_SETUP_TOKEN    one-time code you type when creating the administrator account, so nobody
                         else can claim a fresh server.
 BEJITECH_COOKIE_SECURE  "1" (default) sends the login cookie over HTTPS only; "0" for local trials.
+BEJITECH_LOCAL_MODE     "1" when running on your own computer (scripts/run_web_local.sh): the setup code
+                        is not asked when the administrator is created from that same computer.
 """
 from __future__ import annotations
 
@@ -23,6 +25,7 @@ class WebConfig:
     secret_key: str
     setup_token: str
     cookie_secure: bool = True
+    local_mode: bool = False
     session_max_hours: int = 12
     two_step_pending_seconds: int = 300
 
@@ -37,4 +40,5 @@ class WebConfig:
             secret_key=secret,
             setup_token=os.environ.get("BEJITECH_SETUP_TOKEN", ""),
             cookie_secure=os.environ.get("BEJITECH_COOKIE_SECURE", "1") != "0",
+            local_mode=os.environ.get("BEJITECH_LOCAL_MODE", "0") == "1",
         )

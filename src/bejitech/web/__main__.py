@@ -23,8 +23,12 @@ def main(argv: list[str]) -> int:
         return 0
     if cmd == "serve":
         import uvicorn
+        local = os.environ.get("BEJITECH_LOCAL_MODE", "0") == "1"
         uvicorn.run("bejitech.web.main:create_app", factory=True, host=os.environ.get("HOST", "127.0.0.1"),
-                    port=int(os.environ.get("PORT", "8000")), proxy_headers=True, forwarded_allow_ips="*")
+                    port=int(os.environ.get("PORT", "8000")),
+                    # Behind the hosting service's proxy the real client address is in the headers;
+                    # on your own computer there is no proxy, so the headers are not trusted.
+                    proxy_headers=local is False, forwarded_allow_ips="*" if local is False else None)
         return 0
     if cmd == "reset-two-step" and len(argv) > 2:
         from sqlalchemy import select

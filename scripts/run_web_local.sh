@@ -44,7 +44,7 @@ set -a
 # shellcheck disable=SC1091
 source "$DATA/web.env"
 set +a
-export BEJITECH_DATA_DIR="$DATA" BEJITECH_COOKIE_SECURE=0 PORT
+export BEJITECH_DATA_DIR="$DATA" BEJITECH_COOKIE_SECURE=0 BEJITECH_LOCAL_MODE=1 PORT
 export TZ="${TZ:-Africa/Dar_es_Salaam}"
 
 if [ "${LOCAL_ONLY:-0}" = "1" ]; then
@@ -66,7 +66,7 @@ echo "  On this computer:   http://localhost:$PORT"
 if [ "$HOST" = "0.0.0.0" ] && [ -n "$IP" ]; then
   echo "  Phone / tablet:     http://$IP:$PORT   (same Wi-Fi only)"
 fi
-echo "  Setup code (only needed the very first time): $BEJITECH_SETUP_TOKEN"
+echo "  Setup code (first time only, and only if you set up from another device): $BEJITECH_SETUP_TOKEN"
 echo "  Data folder:        $DATA"
 echo "Leave this window open while you use it. Press Ctrl+C to stop."
 echo

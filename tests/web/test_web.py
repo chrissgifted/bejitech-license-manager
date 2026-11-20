@@ -156,3 +156,29 @@ def test_reset_two_step_command(client, monkeypatch, tmp_path):
     assert cli.main(["x", "reset-two-step", "Admin"]) == 0
     assert not state.ctx(1).auth.totp_enabled(1)
     assert cli.main(["x", "reset-two-step", "nobody"]) == 1
+
+
+def test_setup_code_tolerates_pasted_prefix(client):
+    page = client.get("/setup")
+    r = client.post("/setup", data={"csrf": csrf(page.text), "setup_token": f"  BEJITECH_SETUP_TOKEN={SETUP} ",
+                                    "display_name": "X", "username": "x", "password": PASSWORD,
+                                    "password2": PASSWORD, "recovery": RECOVERY})
+    assert r.status_code == 303
+
+
+def test_local_mode_needs_no_setup_code_on_the_same_computer(tmp_path):
+    if PG_URL:
+        _reset_pg_schema(PG_URL)
+    config = WebConfig(data_dir=tmp_path / "web", database_url=PG_URL, secret_key="x" * 40,
+                       setup_token=SETUP, cookie_secure=False, local_mode=True)
+    app = web_main.create_app(config, keystore=MemoryKeyStore(crypto.generate_key()))
+    with TestClient(app, follow_redirects=False, client=("192.168.1.50", 5000)) as other:
+        page = other.get("/setup")
+        assert 'name="setup_token"' in page.text  # another device on the Wi-Fi still needs the code
+    with TestClient(app, follow_redirects=False, client=("127.0.0.1", 5000)) as here:
+        page = here.get("/setup")
+        assert 'name="setup_token"' not in page.text
+        r = here.post("/setup", data={"csrf": csrf(page.text), "display_name": "X", "username": "x",
+                                      "password": PASSWORD, "password2": PASSWORD, "recovery": RECOVERY})
+        assert r.status_code == 303 and r.headers["location"] == "/setup/two-step"
+    app.state.web.db.dispose()
