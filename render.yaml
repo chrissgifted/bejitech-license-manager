@@ -31,6 +31,8 @@ services:
         value: 0.0.0.0
       - key: TZ
         value: Africa/Dar_es_Salaam
+      - key: BEJITECH_TWO_STEP
+        value: "1"
       - key: BEJITECH_DATA_DIR
         value: /var/data
       - key: BEJITECH_DATABASE_URL

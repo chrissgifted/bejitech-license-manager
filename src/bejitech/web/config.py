@@ -10,6 +10,8 @@ BEJITECH_SETUP_TOKEN    one-time code you type when creating the administrator a
 BEJITECH_COOKIE_SECURE  "1" (default) sends the login cookie over HTTPS only; "0" for local trials.
 BEJITECH_LOCAL_MODE     "1" when running on your own computer (scripts/run_web_local.sh): the setup code
                         is not asked when the administrator is created from that same computer.
+BEJITECH_TWO_STEP       "1" asks for the 6-digit authenticator code at sign-in, "0" password only.
+                        Default: off in local mode (your own laptop), on everywhere else (online).
 """
 from __future__ import annotations
 
@@ -28,17 +30,20 @@ class WebConfig:
     local_mode: bool = False
     session_max_hours: int = 12
     two_step_pending_seconds: int = 300
+    two_step: bool = True
 
     @classmethod
     def from_env(cls) -> "WebConfig":
         secret = os.environ.get("BEJITECH_SECRET_KEY", "")
         if len(secret) < 32:
             raise RuntimeError("BEJITECH_SECRET_KEY must be set to a random value of at least 32 characters.")
+        local = os.environ.get("BEJITECH_LOCAL_MODE", "0") == "1"
         return cls(
             data_dir=Path(os.environ.get("BEJITECH_DATA_DIR", "./bejitech-data")).expanduser(),
             database_url=os.environ.get("BEJITECH_DATABASE_URL") or os.environ.get("DATABASE_URL") or None,
             secret_key=secret,
             setup_token=os.environ.get("BEJITECH_SETUP_TOKEN", ""),
             cookie_secure=os.environ.get("BEJITECH_COOKIE_SECURE", "1") != "0",
-            local_mode=os.environ.get("BEJITECH_LOCAL_MODE", "0") == "1",
+            local_mode=local,
+            two_step=os.environ.get("BEJITECH_TWO_STEP", "0" if local else "1") != "0",
         )

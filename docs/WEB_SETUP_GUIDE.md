@@ -17,7 +17,8 @@ when they're on the same Wi-Fi. When the Mac is off or asleep, the app is off to
    - the address for your phone, like **http://192.168.1.23:8000**
    - the **setup code** you need once.
 5. Open http://localhost:8000 in Safari or Chrome. Create the administrator (setup code, name, username,
-   password, recovery passphrase) and turn on two-step login with Google or Microsoft Authenticator.
+   password, recovery passphrase). On your own laptop you sign in with your password only; the 6-digit
+   authenticator code is switched on automatically when the app goes online (Option B).
 6. Leave the Terminal window open while you use the app. To stop it, press **Ctrl + C** in that window.
    To start again later, double-click **Start Bejitech Web.command** again.
 

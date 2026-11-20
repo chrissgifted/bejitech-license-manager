@@ -52,7 +52,7 @@
     {{ csrf_field(csrf) }}<input type="hidden" name="tab" value="security">
     <h2>Automatic sign-out</h2>
     <label>Sign out after inactivity (minutes)<input type="number" name="security.autolock_minutes" min="5" max="240" value="{{ s['security.autolock_minutes'] }}"></label>
-    <p class="muted small">Encryption key stored in: {{ keystore }}. Two-step login is on for your account.</p>
+    <p class="muted small">Encryption key stored in: {{ keystore }}. {% if two_step %}Two-step login (6-digit code) is on.{% else %}Sign-in uses your password only (6-digit code is off on this computer).{% endif %}</p>
     <div class="form-actions"><button class="btn primary" type="submit">Save</button></div>
   </form>
   <form method="post" action="/settings/password" class="card">

@@ -693,7 +693,7 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
         audit = ctx.audit.recent(limit=300, search=q.strip()) if tab == "audit" else []
         return page(request, "settings.html", tab=tab, tabs=SETTINGS_TABS, s=ctx.settings.all(),
                     types=ctx.catalogue.list_license_types() if tab == "types" else [], audit=audit, q=q,
-                    keystore=state.keystore.describe(), data_dir=str(state.paths.root),
+                    keystore=state.keystore.describe(), two_step=ui.config.two_step, data_dir=str(state.paths.root),
                     database="PostgreSQL" if state.db.is_postgres else str(state.paths.database))
 
     SETTING_FIELDS = {

@@ -182,3 +182,33 @@ def test_local_mode_needs_no_setup_code_on_the_same_computer(tmp_path):
                                       "password": PASSWORD, "password2": PASSWORD, "recovery": RECOVERY})
         assert r.status_code == 303 and r.headers["location"] == "/setup/two-step"
     app.state.web.db.dispose()
+
+
+def test_password_only_sign_in_when_two_step_is_off(tmp_path, monkeypatch):
+    """Local laptop default: no 6-digit code at setup or sign-in."""
+    monkeypatch.setenv("BEJITECH_SECRET_KEY", "x" * 40)
+    monkeypatch.setenv("BEJITECH_LOCAL_MODE", "1")
+    monkeypatch.delenv("BEJITECH_TWO_STEP", raising=False)
+    assert WebConfig.from_env().two_step is False
+    monkeypatch.setenv("BEJITECH_LOCAL_MODE", "0")
+    assert WebConfig.from_env().two_step is True  # online: always on unless explicitly turned off
+
+    if PG_URL:
+        _reset_pg_schema(PG_URL)
+    config = WebConfig(data_dir=tmp_path / "web", database_url=PG_URL, secret_key="x" * 40,
+                       setup_token=SETUP, cookie_secure=False, two_step=False)
+    app = web_main.create_app(config, keystore=MemoryKeyStore(crypto.generate_key()))
+    with TestClient(app, follow_redirects=False) as c:
+        page = c.get("/setup")
+        r = c.post("/setup", data={"csrf": csrf(page.text), "setup_token": SETUP, "display_name": "X",
+                                   "username": "admin", "password": PASSWORD, "password2": PASSWORD,
+                                   "recovery": RECOVERY})
+        assert r.status_code == 303 and r.headers["location"] == "/"
+        assert c.get("/").status_code == 200
+        sign_out(c)
+        page = c.get("/login")
+        r = c.post("/login", data={"csrf": csrf(page.text), "username": "admin", "password": PASSWORD})
+        assert r.status_code == 303 and r.headers["location"] == "/"
+        assert "password only" in c.get("/settings?tab=security").text
+        assert c.get("/login/code").status_code == 303
+    app.state.web.db.dispose()

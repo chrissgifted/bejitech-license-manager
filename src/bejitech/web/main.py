@@ -265,6 +265,9 @@ def create_app(config: WebConfig | None = None, keystore: KeyStore | None = None
             return render(request, "setup.html", status=400, error=str(exc), form=form,
                           need_code=not from_this_computer(request))
         state._cipher = None
+        if not config.two_step:
+            start_stage(request, ctx.user_id, ctx.auth.display_name, STAGE_FULL)
+            return RedirectResponse("/", status_code=303)
         start_stage(request, ctx.user_id, ctx.auth.display_name, STAGE_ENROL)
         return RedirectResponse("/setup/two-step", status_code=303)
 
@@ -314,6 +317,10 @@ def create_app(config: WebConfig | None = None, keystore: KeyStore | None = None
             uid, _uname, dname = ctx.auth.verify_credentials(username, password)
         except BejitechError as exc:
             return render(request, "login.html", status=400, error=str(exc), note=None, username=username)
+        if not config.two_step:
+            # Password only (the default on your own laptop): unlock straight away
+            start_stage(request, uid, dname, STAGE_FULL)
+            return RedirectResponse("/", status_code=303)
         stage = STAGE_TWO_STEP if ctx.auth.totp_enabled(uid) else STAGE_ENROL
         start_stage(request, uid, dname, stage)
         return RedirectResponse("/login/code" if stage == STAGE_TWO_STEP else "/setup/two-step", status_code=303)
