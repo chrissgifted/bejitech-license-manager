@@ -58,6 +58,7 @@ class DeliveryNoteService:
             "items": items, "include_signature": bool(note.include_signature),
             "footer": get_setting(s, "delivery.footer", ""),
             "show_account": get_setting(s, "delivery.show_balance", "1") == "1",
+            "instructions": get_setting(s, "delivery.instructions", "short"),
         }
 
     def _render(self, s, note: DeliveryNote) -> Path:

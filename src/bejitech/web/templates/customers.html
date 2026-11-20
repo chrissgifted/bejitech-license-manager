@@ -74,6 +74,25 @@
       </form>
     </details>
   </div>
+  {% if reminder %}
+  <section class="reminder" id="reminder">
+    <div class="reminder-head">
+      <div><h3>Invoice and payment reminder</h3>
+        <p class="muted small">Invoice {{ reminder.number }} · {{ format_money(reminder.total_due) }} due. Download the PDF, then send it with WhatsApp or email (attach the PDF in the chat or email).</p></div>
+      <div class="actions">
+        <a class="btn" href="/customers/{{ sel.id }}/invoice.pdf" target="_blank" rel="noopener">📄 Open invoice</a>
+        <a class="btn" href="/customers/{{ sel.id }}/invoice.pdf?download=1">⬇ Download PDF</a>
+        <a class="btn whatsapp" href="{{ reminder.whatsapp }}" target="_blank" rel="noopener">WhatsApp reminder</a>
+        {% if reminder.email %}<a class="btn" href="{{ reminder.mailto }}">✉ Email reminder</a>{% endif %}
+      </div>
+    </div>
+    <details><summary class="muted small">Show the message</summary>
+      <pre class="reminder-text" id="reminder-text">{{ reminder.text }}</pre>
+      <button class="btn small" type="button" data-copy="#reminder-text">Copy message</button>
+    </details>
+    {% if not reminder.has_phone %}<p class="muted small">No phone number saved for this customer: WhatsApp will ask who to send it to.</p>{% endif %}
+  </section>
+  {% endif %}
   <h3>Account statement</h3>
   <div class="table-wrap"><table class="data stackable compact">
     <thead><tr><th>Date</th><th>Description</th><th class="num">Charged</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr></thead>

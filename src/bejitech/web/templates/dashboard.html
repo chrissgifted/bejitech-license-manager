@@ -41,7 +41,7 @@
     <h2>Customers who owe money</h2>
     {% if debtors %}
     <ul class="alerts">
-      {% for name, cid, b in debtors %}<li><a href="/customers?id={{ cid }}#detail"><strong>{{ name }}</strong></a><span class="owes">{{ format_money(b) }}</span></li>{% endfor %}
+      {% for name, cid, b in debtors %}<li><a href="/customers?id={{ cid }}#detail"><strong>{{ name }}</strong></a><span class="owes">{{ format_money(b) }}</span> · <a class="small" href="/customers?id={{ cid }}#reminder">Send reminder</a></li>{% endfor %}
     </ul>
     {% else %}<p class="ok">✓ Nobody owes you money.</p>{% endif %}
   </section>

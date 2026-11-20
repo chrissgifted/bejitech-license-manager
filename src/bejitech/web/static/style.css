@@ -263,3 +263,12 @@ a.stat { color: inherit; text-decoration: none; }
 a.stat:hover { border-color: var(--red); }
 .split > .side-col { flex: 1 1 0; display: grid; gap: 14px; min-width: 0; }
 @media (max-width: 700px) { .stat strong { font-size: 20px; } }
+
+/* Invoice and reminder */
+.reminder { border: 1px solid #F3C5BF; background: #FFF8F7; border-radius: var(--radius); padding: 12px 14px; margin: 10px 0 14px; }
+.reminder-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.reminder-head h3 { margin: 0 0 2px; }
+.reminder .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn.whatsapp { background: #1FA855; border-color: #1FA855; color: #fff; }
+.btn.whatsapp:hover { background: #178C46; }
+.reminder-text { white-space: pre-wrap; font-family: inherit; font-size: 13px; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 8px 0; }

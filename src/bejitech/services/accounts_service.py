@@ -39,6 +39,19 @@ class SalePayment:
 
 
 @dataclass
+class OpenItem:
+    date: str
+    description: str
+    amount_minor: int
+    paid_minor: int
+    sale_id: int | None = None
+
+    @property
+    def due_minor(self) -> int:
+        return self.amount_minor - self.paid_minor
+
+
+@dataclass
 class StatementLine:
     date: str
     kind: str            # SALE / OPENING_DEBT / PAYMENT
@@ -60,6 +73,7 @@ class Account:
     paid_minor: int = 0
     lines: list[StatementLine] = field(default_factory=list)
     sales: dict[int, SalePayment] = field(default_factory=dict)
+    open_items: list["OpenItem"] = field(default_factory=list)  # debts not yet fully paid, oldest first
 
     @property
     def balance_minor(self) -> int:
@@ -222,10 +236,10 @@ class AccountsService:
                 running += line.charge_minor - line.payment_minor
                 if line.kind == "SALE":
                     acc.sales_minor += line.charge_minor
-                    debts.append([line.sale_id, line.charge_minor])
+                    debts.append([line.sale_id, line.charge_minor, line])
                 elif line.kind == EntryKind.OPENING_DEBT:
                     acc.opening_minor += line.charge_minor
-                    debts.append([None, line.charge_minor])
+                    debts.append([None, line.charge_minor, line])
                 else:
                     acc.paid_minor += line.payment_minor
             line.balance_minor = running
@@ -238,21 +252,23 @@ class AccountsService:
                 linked[line.sale_id] = linked.get(line.sale_id, 0) + line.payment_minor
         paid_by_sale: dict[int, int] = {}
         pool = acc.paid_minor
-        for sale_id, amount in debts:
+        for sale_id, amount, _line in debts:
             if sale_id and sale_id in linked:
                 take = min(amount, linked[sale_id])
                 paid_by_sale[sale_id] = take
                 pool -= take
         remaining = []  # what is still owed on each debt after its own payments
-        for sale_id, amount in debts:
+        for sale_id, amount, _line in debts:
             remaining.append([sale_id, amount - paid_by_sale.get(sale_id, 0) if sale_id else amount])
         for item in remaining:
             take = min(item[1], max(pool, 0))
             pool -= take
             item[1] -= take
-        for (sale_id, amount), (_sid, left) in zip(debts, remaining):
+        for (sale_id, amount, line), (_sid, left) in zip(debts, remaining):
             if sale_id:
                 acc.sales[sale_id] = SalePayment(sale_id, amount, amount - left)
+            if left > 0:
+                acc.open_items.append(OpenItem(line.date, line.description, amount, amount - left, sale_id))
         return acc
 
     def balance(self, customer_id: int) -> int:
@@ -285,3 +301,67 @@ class AccountsService:
     def total_owed(self) -> int:
         """Money customers owe (customers in credit are not subtracted)."""
         return sum(b for b in self.balances().values() if b > 0)
+
+    # ---------- invoice and reminder ----------
+    def invoice_data(self, customer_id: int) -> dict:
+        from bejitech.core.timeutil import display_date
+        acc = self.account(customer_id)
+        c = self.ctx.customers.get(customer_id)
+        st = self.ctx.settings.all()
+        today = today_iso()
+        payments = [ln for ln in acc.lines if ln.kind == EntryKind.PAYMENT and not ln.is_void][-5:]
+        return {
+            "number": f"{c.customer_ref}-{today.replace('-', '')}",
+            "date": display_date(today),
+            "seller": self.ctx.settings.seller(),
+            "customer": {"name": c.full_name, "organization": c.organization, "phone": c.phone, "email": c.email,
+                         "address": c.address, "ref": c.customer_ref},
+            "items": [{"date": display_date(i.date), "description": i.description, "amount": i.amount_minor,
+                       "paid": i.paid_minor, "due": i.due_minor} for i in acc.open_items],
+            "total_due": max(acc.balance_minor, 0),
+            "payments": [{"date": display_date(ln.date), "description": ln.description.replace(
+                "Payment received · ", ""), "amount": ln.payment_minor} for ln in reversed(payments)],
+            "payment_details": st.get("invoice.payment_details", ""),
+            "note": st.get("invoice.note", "") or "Kindly settle the balance at your earliest convenience. "
+                                                   "Thank you for your business.",
+        }
+
+    def invoice_pdf(self, customer_id: int):
+        from bejitech.pdf.invoice import build_invoice
+        data = self.invoice_data(customer_id)
+        out = self.ctx.paths.root / "invoices" / f"Invoice {data['number']}.pdf"
+        build_invoice(out, data)
+        with self.ctx.db.session() as s:
+            c = s.get(Customer, customer_id)
+            audit(s, self.ctx.user_id, "INVOICE_GENERATED", "customer", c.uuid, number=data["number"],
+                  total_due=data["total_due"])
+        return out
+
+    def reminder(self, customer_id: int) -> dict:
+        """Ready-to-send reminder text, with WhatsApp and email links (the PDF is attached by hand)."""
+        from urllib.parse import quote
+
+        from bejitech.core.money import format_money
+        data = self.invoice_data(customer_id)
+        seller = data["seller"]
+        lines = [f"Dear {data['customer']['name']},", "",
+                 f"This is a friendly reminder that your balance with {seller.get('business_name') or seller.get('name')}"
+                 f" is {format_money(data['total_due'])}.", ""]
+        for it in data["items"][:10]:
+            lines.append(f"• {it['date']}: {it['description']} – {format_money(it['due'])}")
+        if len(data["items"]) > 10:
+            lines.append(f"• …and {len(data['items']) - 10} more")
+        if data["payment_details"]:
+            lines += ["", "How to pay:", data["payment_details"]]
+        lines += ["", "Thank you.", seller.get("name") or "", seller.get("phone") or ""]
+        text = "\n".join(lines).strip()
+        phone = "".join(ch for ch in (data["customer"].get("phone") or "") if ch.isdigit())
+        if phone.startswith("0") and len(phone) == 10:
+            phone = "255" + phone[1:]  # Tanzanian local number
+        subject = f"Payment reminder – invoice {data['number']}"
+        email = data["customer"].get("email") or ""
+        return {"text": text, "total_due": data["total_due"], "number": data["number"],
+                "whatsapp": f"https://wa.me/{phone}?text={quote(text)}" if phone else
+                f"https://wa.me/?text={quote(text)}",
+                "has_phone": bool(phone), "email": email,
+                "mailto": f"mailto:{quote(email)}?subject={quote(subject)}&body={quote(text)}"}

@@ -83,3 +83,19 @@ def test_invalid_amounts_are_refused(ctx, helpers):
         ctx.accounts.add_opening_debt(cid, 1000, "20-11-2026")
     with pytest.raises(ValidationError):
         sell(ctx, helpers, cid, "FFFFF-66666", paid=-1)
+
+
+def test_invoice_lists_what_is_owed_and_reminder_links(ctx, helpers):
+    from pypdf import PdfReader
+    ctx.settings.update({"invoice.payment_details": "M-Pesa Lipa: 123456 (Bejitech)"})
+    cid = helpers.add_customer(ctx, phone="0712 345 678", email="amina@example.com")
+    ctx.accounts.add_opening_debt(cid, 70_000, "2026-09-01", "Old balance")
+    sid = sell(ctx, helpers, cid, "GGGGG-77777", price=90_000, paid=30_000)
+    pdf = ctx.accounts.invoice_pdf(cid)
+    text = "\n".join(pg.extract_text() for pg in PdfReader(str(pdf)).pages)
+    for expected in ("INVOICE", "Old balance", "TZS 130,000", "TZS 60,000", "M-Pesa Lipa: 123456", "Amina Hassan"):
+        assert expected in text, expected
+    r = ctx.accounts.reminder(cid)
+    assert r["whatsapp"].startswith("https://wa.me/255712345678?text=")
+    assert "TZS%20130%2C000" in r["whatsapp"] and r["mailto"].startswith("mailto:amina%40example.com")
+    assert ctx.accounts.account(cid).sales[sid].due_minor == 60_000

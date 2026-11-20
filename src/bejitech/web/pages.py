@@ -363,13 +363,15 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
         balances = ctx.accounts.balances()
         if owing:
             rows = [r for r in rows if balances.get(r.id, 0) > 0]
-        sel = hist = acc = None
+        sel = hist = acc = reminder = None
         if id:
             try:
                 sel, hist, acc = ctx.customers.get(id), ctx.customers.history(id), ctx.accounts.account(id)
+                reminder = ctx.accounts.reminder(id) if acc.balance_minor > 0 else None
             except BejitechError:
                 sel = None
         return page(request, "customers.html", rows=rows, q=q, archived=archived, sel=sel, hist=hist, acc=acc,
+                    reminder=reminder,
                     balances=balances, owing=owing, total_owed=sum(b for b in balances.values() if b > 0),
                     methods=[(m.value, m.label) for m in PaymentMethod], today=today_iso())
 
@@ -438,6 +440,15 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
         except BejitechError as exc:
             flash(request, str(exc), "error")
         return back_to(f, f"/customers?id={cid}")
+
+    @app.get("/customers/{cid}/invoice.pdf")
+    def customer_invoice(request: Request, cid: int, download: int = 0):
+        ctx = ctx_of(request)
+        f = ctx.accounts.invoice_pdf(cid)
+        disp = "attachment" if download else "inline"
+        return FileResponse(f, media_type="application/pdf",
+                            headers={"Content-Disposition": f'{disp}; filename="{f.name}"',
+                                     "Cache-Control": "no-store"})
 
     @app.post("/customers/{cid}/opening-debt")
     async def customer_opening_debt(request: Request, cid: int):
@@ -796,9 +807,11 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
                     database="PostgreSQL" if state.db.is_postgres else str(state.paths.database))
 
     SETTING_FIELDS = {
-        "business": ["seller.name", "seller.business_name", "seller.phone", "seller.email", "seller.address"],
+        "business": ["seller.name", "seller.business_name", "seller.phone", "seller.email", "seller.address",
+                     "invoice.payment_details", "invoice.note"],
         "sales": ["currency.usd_rate", "inventory.default_low_stock"],
-        "delivery": ["delivery.include_signature", "delivery.show_balance", "delivery.footer"],
+        "delivery": ["delivery.include_signature", "delivery.show_balance", "delivery.instructions",
+                     "delivery.footer"],
         "security": ["security.autolock_minutes"],
     }
 
@@ -817,6 +830,8 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
             if "currency.usd_rate" in values:
                 from bejitech.core.money import parse_rate
                 parse_rate(values["currency.usd_rate"])
+            if values.get("delivery.instructions", "short") not in ("short", "full", "none"):
+                raise ValidationError("Choose how much of the instructions to show.")
             for k in ("inventory.default_low_stock", "security.autolock_minutes"):
                 if k in values and not values[k].strip().isdigit():
                     raise ValidationError("Please enter a whole number.")

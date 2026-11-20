@@ -16,7 +16,9 @@
       <label>Email<input name="seller.email" type="email" value="{{ s['seller.email'] }}"></label>
     </div>
     <label class="block">Address<input name="seller.address" value="{{ s['seller.address'] }}"></label>
-    <p class="muted small">These details appear on new delivery notes. Notes already issued keep the details they were issued with.</p>
+    <p class="muted small">These details appear on new delivery notes and invoices. Notes already issued keep the details they were issued with.</p>
+    <label class="block">How customers can pay you (printed on invoices and reminders)<textarea name="invoice.payment_details" rows="3" placeholder="e.g. M-Pesa Lipa Namba: 123456 (BEJITECH)&#10;CRDB Bank, A/C 0150 1234 5678, Bejitech Ltd">{{ s.get('invoice.payment_details', '') }}</textarea></label>
+    <label class="block">Note at the bottom of invoices<input name="invoice.note" value="{{ s.get('invoice.note', '') }}" placeholder="Kindly settle the balance at your earliest convenience. Thank you for your business."></label>
   {% elif tab == 'sales' %}
     <div class="form-grid">
       <label>Default currency<input value="TZS (Tanzanian Shillings)" disabled></label>
@@ -26,6 +28,13 @@
   {% else %}
     <label class="check"><input type="checkbox" name="delivery.include_signature" value="1" {{ 'checked' if s['delivery.include_signature'] == '1' }}> Show the signature section on delivery notes</label>
     <label class="check"><input type="checkbox" name="delivery.show_balance" value="1" {{ 'checked' if s.get('delivery.show_balance', '1') == '1' }}> Show the payment box (paid now, earlier balance, total owed) on delivery notes</label>
+    <label class="block">Installation and activation instructions
+      <select name="delivery.instructions">
+        {% set mode = s.get('delivery.instructions', 'short') %}
+        <option value="short" {{ 'selected' if mode == 'short' }}>Short: first 4 steps of each, side by side (recommended)</option>
+        <option value="full" {{ 'selected' if mode == 'full' }}>Full: every step</option>
+        <option value="none" {{ 'selected' if mode == 'none' }}>None: key and download link only</option>
+      </select></label>
     <label class="block">Footer text<textarea name="delivery.footer" rows="3">{{ s['delivery.footer'] }}</textarea></label>
   {% endif %}
   <div class="form-actions"><button class="btn primary" type="submit">Save</button></div>

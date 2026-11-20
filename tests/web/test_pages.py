@@ -230,3 +230,19 @@ def test_part_payment_needs_an_amount(client):
     data["paid_now"] = "20,000"
     assert client.post("/sales/new", data=data).status_code == 303
     assert "Partly paid" in client.get("/sales").text
+
+
+def test_invoice_pdf_and_reminder_buttons(client):
+    setup_admin(client)
+    cid = add_customer(client, "Hamisi Juma")
+    page = client.get(f"/customers?id={cid}").text
+    assert "Invoice and payment reminder" not in page  # nothing owed yet
+    client.post(f"/customers/{cid}/opening-debt", data={"csrf": csrf(page), "amount": "45,000", "date": "2026-10-01"})
+    page = client.get(f"/customers?id={cid}").text
+    assert "Invoice and payment reminder" in page and "https://wa.me/255712345678?text=" in page
+    pdf = client.get(f"/customers/{cid}/invoice.pdf")
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    assert "attachment" in client.get(f"/customers/{cid}/invoice.pdf?download=1").headers["content-disposition"]
+    r = client.post("/settings/save", data={"csrf": token(client, "/settings"), "tab": "delivery",
+                                            "delivery.instructions": "none", "delivery.footer": "Thanks"})
+    assert r.status_code == 303 and 'value="none" selected' in client.get("/settings?tab=delivery").text
