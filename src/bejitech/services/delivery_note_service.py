@@ -14,6 +14,7 @@ from bejitech.core.errors import NotFoundError, ValidationError
 from bejitech.core.timeutil import display_date, utcnow_iso
 from bejitech.db.models import Customer, DeliveryNote, Sale
 from bejitech.pdf.delivery_note import build_delivery_note
+from bejitech.services.accounts_service import sale_account_summary
 from bejitech.services.common import audit, get_setting
 from bejitech.services.sales_service import customer_snapshot, seller_snapshot
 
@@ -56,6 +57,7 @@ class DeliveryNoteService:
             "seller": json.loads(note.seller_snapshot), "customer": json.loads(note.customer_snapshot),
             "items": items, "include_signature": bool(note.include_signature),
             "footer": get_setting(s, "delivery.footer", ""),
+            "show_account": get_setting(s, "delivery.show_balance", "1") == "1",
         }
 
     def _render(self, s, note: DeliveryNote) -> Path:
@@ -108,7 +110,8 @@ class DeliveryNoteService:
                             .order_by(DeliveryNote.revision.desc()).limit(1)) or 1) + 1
             note = DeliveryNote(note_number=f"{base}-R{rev}", sale_id=old.sale_id, revision=rev,
                                 delivery_date=old.delivery_date, seller_snapshot=seller_snapshot(s),
-                                customer_snapshot=customer_snapshot(old.sale.customer),
+                                customer_snapshot=customer_snapshot(old.sale.customer,
+                                                                    sale_account_summary(s, old.sale)),
                                 include_signature=old.include_signature, status=DeliveryNoteStatus.ISSUED,
                                 created_at=utcnow_iso())
             s.add(note)

@@ -25,6 +25,7 @@
     </div>
   {% else %}
     <label class="check"><input type="checkbox" name="delivery.include_signature" value="1" {{ 'checked' if s['delivery.include_signature'] == '1' }}> Show the signature section on delivery notes</label>
+    <label class="check"><input type="checkbox" name="delivery.show_balance" value="1" {{ 'checked' if s.get('delivery.show_balance', '1') == '1' }}> Show the payment box (paid now, earlier balance, total owed) on delivery notes</label>
     <label class="block">Footer text<textarea name="delivery.footer" rows="3">{{ s['delivery.footer'] }}</textarea></label>
   {% endif %}
   <div class="form-actions"><button class="btn primary" type="submit">Save</button></div>

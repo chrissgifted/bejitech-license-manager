@@ -2,17 +2,18 @@
 {% from "_macros.html" import head, csrf_field %}
 {% block title %}Customers · Bejitech{% endblock %}
 {% block content %}
-{% call head("Customers", "Who bought what, with each customer's purchase history.") %}
+{% call head("Customers", "Who bought what, and who still owes money." ~ (" Total owed by customers: " ~ format_money(total_owed) if total_owed else "")) %}
   <a class="btn primary" href="/customers/new">+ Add customer</a>
 {% endcall %}
 <form method="get" action="/customers" class="toolbar">
   <input type="search" name="q" value="{{ q }}" placeholder="🔍 Search name, organisation, phone, email, CUS ref…" aria-label="Search">
+  <label class="check"><input type="checkbox" name="owing" value="1" {{ 'checked' if owing }} data-autosubmit> Only customers who owe money</label>
   <label class="check"><input type="checkbox" name="archived" value="1" {{ 'checked' if archived }} data-autosubmit> Show archived</label>
   <button class="btn" type="submit">Search</button>
 </form>
 <div class="card flush">
 <div class="table-wrap tall"><table class="data stackable">
-  <thead><tr><th>Ref</th><th>Name</th><th>Organisation</th><th>Phone</th><th>Email</th><th class="num">Purchases</th><th class="num">Total spent</th><th></th></tr></thead>
+  <thead><tr><th>Ref</th><th>Name</th><th>Organisation</th><th>Phone</th><th>Email</th><th class="num">Purchases</th><th class="num">Total spent</th><th class="num">Balance owed</th><th></th></tr></thead>
   <tbody>
   {% for c in rows %}
     <tr data-href="/customers?id={{ c.id }}" class="{{ 'selected' if sel and sel.id == c.id }} {{ 'dim' if c.is_archived }}">
@@ -21,17 +22,19 @@
       <td data-label="Organisation">{{ c.organization or '' }}</td><td class="nowrap" data-label="Phone">{{ c.phone or '' }}</td>
       <td data-label="Email">{{ c.email or '' }}</td><td class="num" data-label="Purchases">{{ c.purchases }}</td>
       <td class="num" data-label="Total spent">{{ format_money(c.total_spent_minor) }}</td>
+      {% set b = balances.get(c.id, 0) %}
+      <td class="num" data-label="Balance owed">{% if b > 0 %}<strong class="owes">{{ format_money(b) }}</strong>{% elif b < 0 %}<span class="credit">Credit {{ format_money(-b) }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="row-actions"><a class="btn small" href="/customers/{{ c.id }}/edit">Edit</a>
         <a class="btn small" href="/sales/new?customer={{ c.id }}">+ Sale</a></td>
     </tr>
-  {% else %}<tr><td colspan="8" class="muted empty">No customers yet. <a href="/customers/new">Add a customer</a>.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="9" class="muted empty">No customers{{ ' owe money' if owing else ' yet' }}. <a href="/customers/new">Add a customer</a>.</td></tr>{% endfor %}
   </tbody>
 </table></div>
 </div>
 {% if sel %}
 <section class="card detail" id="detail">
   <div class="detail-head">
-    <h2>Purchase history: {{ sel.full_name }}</h2>
+    <h2>{{ sel.full_name }}</h2>
     <form method="post" action="/customers/{{ sel.id }}/archive" class="inline" {% if not sel.is_archived %}data-confirm="Archive {{ sel.full_name }}?"{% endif %}>
       {{ csrf_field(csrf) }}<input type="hidden" name="archived" value="{{ '0' if sel.is_archived else '1' }}">
       <button class="btn small" type="submit">{{ 'Restore customer' if sel.is_archived else 'Archive customer' }}</button>
@@ -39,15 +42,74 @@
   </div>
   <p class="muted">{{ sel.customer_ref }}{% if sel.organization %} · {{ sel.organization }}{% endif %}{% if sel.phone %} · {{ sel.phone }}{% endif %}{% if sel.email %} · {{ sel.email }}{% endif %}{% if sel.address %} · {{ sel.address }}{% endif %}</p>
   {% if sel.notes %}<p class="small">Notes: {{ sel.notes }}</p>{% endif %}
+  {% set nxt = "/customers?id=" ~ sel.id ~ "#detail" %}
+  <div class="account-summary">
+    <div class="stat {{ 'bad' if acc.balance_minor > 0 else 'good' }}"><span>{{ 'Balance owed' if acc.balance_minor >= 0 else 'Credit on account' }}</span><strong>{{ format_money(abs(acc.balance_minor)) }}</strong></div>
+    <div class="stat"><span>Earlier debts</span><strong>{{ format_money(acc.opening_minor) }}</strong></div>
+    <div class="stat"><span>Sales</span><strong>{{ format_money(acc.sales_minor) }}</strong></div>
+    <div class="stat"><span>Paid</span><strong>{{ format_money(acc.paid_minor) }}</strong></div>
+  </div>
+  <div class="account-forms">
+    <details class="card-ish" {{ 'open' if acc.balance_minor > 0 }}>
+      <summary class="btn primary">💵 Record a payment</summary>
+      <form method="post" action="/customers/{{ sel.id }}/payment" class="form-grid">
+        {{ csrf_field(csrf) }}<input type="hidden" name="next" value="{{ nxt }}">
+        <label>Amount received (TZS) *<input name="amount" inputmode="numeric" data-amount="0" required placeholder="{{ money_input(acc.balance_minor) if acc.balance_minor > 0 else '0' }}"></label>
+        <label>Date<input type="date" name="date" value="{{ today }}"></label>
+        <label>Method<select name="method">{% for v, l in methods %}<option value="{{ v }}" {{ 'selected' if v == 'MOBILE_MONEY' }}>{{ l }}</option>{% endfor %}</select></label>
+        <label>Reference<input name="reference" placeholder="e.g. M-Pesa transaction ID"></label>
+        <label class="wide">Note<input name="note" placeholder="optional"></label>
+        <div class="form-actions wide"><button class="btn primary" type="submit">Save payment</button></div>
+      </form>
+    </details>
+    <details class="card-ish">
+      <summary class="btn">＋ Add earlier debt</summary>
+      <form method="post" action="/customers/{{ sel.id }}/opening-debt" class="form-grid">
+        {{ csrf_field(csrf) }}<input type="hidden" name="next" value="{{ nxt }}">
+        <label>Amount owed (TZS) *<input name="amount" inputmode="numeric" data-amount="0" required></label>
+        <label>Date of the debt<input type="date" name="date" value="{{ today }}"></label>
+        <label class="wide">Description<input name="note" placeholder="e.g. Balance from before the system, Office 2019 x3 in March"></label>
+        <p class="muted small wide">For money the customer owed you before you started using this app. It is added to their balance and shown on their next delivery note.</p>
+        <div class="form-actions wide"><button class="btn" type="submit">Add debt</button></div>
+      </form>
+    </details>
+  </div>
+  <h3>Account statement</h3>
   <div class="table-wrap"><table class="data stackable compact">
-    <thead><tr><th>Ref</th><th>Date</th><th>Product</th><th class="num">Qty</th><th class="num">Total</th><th>Delivery note</th><th>Status</th></tr></thead>
+    <thead><tr><th>Date</th><th>Description</th><th class="num">Charged</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr></thead>
+    <tbody>{% for l in acc.lines %}
+      <tr class="{{ 'void' if l.is_void }}">
+        <td class="nowrap" data-label="Date">{{ display_date(l.date) }}</td>
+        <td data-label="Description">{% if l.sale_id and l.kind == 'SALE' %}<a href="/sales?id={{ l.sale_id }}">{{ l.description }}</a>{% else %}{{ l.description }}{% endif %}
+          {% if l.is_void and l.void_reason %}<br><span class="muted small">{{ 'Cancelled' if l.kind == 'SALE' else 'Voided' }}: {{ l.void_reason }}</span>{% endif %}</td>
+        <td class="num" data-label="Charged">{{ format_money(l.charge_minor) if l.charge_minor else '' }}</td>
+        <td class="num" data-label="Paid">{{ format_money(l.payment_minor) if l.payment_minor else '' }}</td>
+        <td class="num" data-label="Balance">{{ format_money(l.balance_minor) }}</td>
+        <td class="row-actions">{% if l.entry_id and not l.is_void %}
+          <details class="pop"><summary class="btn small">Void…</summary>
+            <form method="post" action="/customers/entries/{{ l.entry_id }}/void" class="pop-body">
+              {{ csrf_field(csrf) }}<input type="hidden" name="next" value="{{ nxt }}">
+              <label>Reason<input name="reason" required placeholder="e.g. entered twice"></label>
+              <button class="btn small danger" type="submit">Void entry</button></form></details>{% endif %}</td>
+      </tr>
+    {% else %}<tr><td colspan="6" class="muted empty">No sales, debts or payments yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <h3>Purchases</h3>
+  <div class="table-wrap"><table class="data stackable compact">
+    <thead><tr><th>Ref</th><th>Date</th><th>Product</th><th class="num">Qty</th><th class="num">Total</th><th>Paid?</th><th>Delivery note</th><th>Status</th><th></th></tr></thead>
     <tbody>{% for s in hist %}
       <tr data-href="/sales?id={{ s.id }}"><td data-label="Ref"><a href="/sales?id={{ s.id }}">{{ s.sales_ref }}</a></td><td class="nowrap" data-label="Date">{{ display_date(s.sale_date) }}</td>
         <td data-label="Product">{{ s.product_names }}</td><td class="num" data-label="Qty">{{ s.quantity }}</td>
         <td class="num" data-label="Total">{{ format_money(s.total_minor) }}</td>
+        {% set p = acc.sales.get(s.id) %}
+        <td data-label="Paid?">{% if p %}<span class="state s-{{ p.state | lower }}">{{ p.state.label }}</span>{% if p.due_minor > 0 and p.paid_minor > 0 %}<br><span class="muted small">{{ format_money(p.due_minor) }} left</span>{% endif %}{% endif %}</td>
         <td data-label="Delivery note">{% if s.delivery_note_id %}<a href="/delivery-notes?id={{ s.delivery_note_id }}">{{ s.delivery_note_number }}</a>{% endif %}</td>
-        <td data-label="Status"><span class="state s-{{ s.status | lower }}">{{ s.status | title }}</span></td></tr>
-    {% else %}<tr><td colspan="7" class="muted empty">No purchases yet.</td></tr>{% endfor %}</tbody>
+        <td data-label="Status"><span class="state s-{{ s.status | lower }}">{{ s.status | title }}</span></td>
+        <td class="row-actions">{% if p and p.due_minor > 0 %}
+          <form method="post" action="/sales/{{ s.id }}/mark-paid" class="inline" data-confirm="Record a payment of {{ format_money(p.due_minor) }} for {{ s.sales_ref }}?">
+            {{ csrf_field(csrf) }}<input type="hidden" name="next" value="{{ nxt }}">
+            <button class="btn small" type="submit">Mark paid</button></form>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="9" class="muted empty">No purchases yet.</td></tr>{% endfor %}</tbody>
   </table></div>
 </section>
 {% endif %}

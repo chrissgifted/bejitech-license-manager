@@ -179,6 +179,10 @@ def build_delivery_note(path: Path, data: dict) -> Path:
             story += [Paragraph("Activation instructions", st["h"]), Paragraph(_p(item["activation"]), st["body"]),
                       Spacer(1, 3 * mm)]
 
+    account = customer.get("account")
+    if account and data.get("show_account", True):
+        story += [Spacer(1, 2 * mm), KeepTogether(_account_box(account, st, accent))]
+
     if data.get("include_signature"):
         sig = Table([["Received by", "Signature", "Date"], ["", "", ""]],
                     colWidths=["40%", "35%", "25%"], rowHeights=[6 * mm, 14 * mm])
@@ -193,3 +197,26 @@ def build_delivery_note(path: Path, data: dict) -> Path:
 
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
     return path
+
+
+def _account_box(acc: dict, st, accent) -> list:
+    """Payment summary: this sale, paid now, earlier balance and what the customer owes in total."""
+    from bejitech.core.money import format_money
+
+    rows = [["This sale", format_money(acc.get("sale_total", 0))],
+            ["Paid now", format_money(acc.get("paid_now", 0))]]
+    prev = acc.get("previous_balance", 0)
+    if prev:
+        rows.append(["Earlier balance owed" if prev > 0 else "Earlier credit", format_money(abs(prev))])
+    bal = acc.get("balance", 0)
+    rows.append(["TOTAL BALANCE OWED" if bal >= 0 else "CREDIT ON ACCOUNT", format_money(abs(bal))])
+    t = Table(rows, colWidths=[70 * mm, 45 * mm], hAlign="RIGHT")
+    t.setStyle(TableStyle([
+        ("FONT", (0, 0), (-1, -1), "Helvetica", 9), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 10.5),
+        ("LINEABOVE", (0, -1), (-1, -1), 0.8, accent), ("BOX", (0, 0), (-1, -1), 0.5, LINE),
+        ("BACKGROUND", (0, -1), (-1, -1), tint(accent, 0.92)),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4 * mm), ("RIGHTPADDING", (0, 0), (-1, -1), 4 * mm),
+        ("TOPPADDING", (0, 0), (-1, -1), 2 * mm), ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm),
+    ]))
+    return [Paragraph("PAYMENT", st["label"]), t, Spacer(1, 4 * mm)]

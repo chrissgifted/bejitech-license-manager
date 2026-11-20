@@ -72,6 +72,11 @@ class AppContext:
         return self._get("delivery_notes", DeliveryNoteService)
 
     @property
+    def accounts(self):
+        from bejitech.services.accounts_service import AccountsService
+        return self._get("accounts", AccountsService)
+
+    @property
     def reports(self):
         from bejitech.services.reporting_service import ReportingService
         return self._get("reports", ReportingService)

@@ -167,6 +167,8 @@
     const price = $("input[data-price]", form), discount = $("input[data-discount]", form), total = $("[data-total]", form);
     const options = $("[data-options]", form), plan = $("[data-plan]", form), after = $("[data-after]", form);
     const complete = $("[data-complete]", form);
+    const payStatus = $("[data-pay-status]", form), paidRow = $("[data-paid-row]", form), paid = $("[data-paid]", form);
+    const owedBox = $("[data-owed-box]", form);
     let afterTexts = {}, timer = null, seq = 0;
 
     function customerInfo() {
@@ -181,7 +183,21 @@
     function updateTotal() {
       const t = (parseInt(qty.value, 10) || 0) * parseAmount(price.value) - parseAmount(discount.value);
       total.textContent = t >= 0 ? formatTZS(t) : "Discount too large";
-      complete.disabled = !(plan.value && t >= 0);
+      let ok = plan.value && t >= 0;
+      if (payStatus) {
+        paidRow.hidden = payStatus.value !== "part";
+        const paidNow = payStatus.value === "full" ? Math.max(t, 0) : payStatus.value === "part" ? parseAmount(paid.value) : 0;
+        if (payStatus.value === "part" && !(paidNow > 0)) ok = false;
+        const opt = customer.selectedOptions[0];
+        const before = opt && opt.value ? parseInt(opt.dataset.balance || "0", 10) : 0;
+        const owedSale = Math.max(t, 0) - paidNow;
+        owedBox.hidden = !(opt && opt.value) || (before === 0 && owedSale === 0);
+        $("[data-owed-before]", form).textContent = before < 0 ? "Credit " + formatTZS(-before) : formatTZS(before);
+        $("[data-owed-sale]", form).textContent = owedSale < 0 ? "Extra paid " + formatTZS(-owedSale) : formatTZS(owedSale);
+        const after = before + owedSale;
+        $("[data-owed-after]", form).textContent = after < 0 ? "Credit " + formatTZS(-after) : formatTZS(after);
+      }
+      complete.disabled = !ok;
     }
     function choose(value) {
       plan.value = value;
@@ -230,11 +246,12 @@
         }).catch(function () { render({ options: [], message: "Could not load the keys. Check that the app is running." }); });
       }, 150);
     }
-    customer.addEventListener("change", function () { customerInfo(); refresh(); });
+    customer.addEventListener("change", function () { customerInfo(); refresh(); updateTotal(); });
     product.addEventListener("change", function () { productInfo(true); refresh(); });
     qty.addEventListener("input", refresh);
     price.addEventListener("input", updateTotal);
     discount.addEventListener("input", updateTotal);
+    if (payStatus) { payStatus.addEventListener("change", updateTotal); paid.addEventListener("input", updateTotal); }
     form.addEventListener("submit", function () { complete.disabled = true; complete.textContent = "Saving…"; });
     customerInfo(); productInfo(!price.value); refresh();
   }

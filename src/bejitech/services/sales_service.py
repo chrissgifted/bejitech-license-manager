@@ -7,19 +7,24 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from bejitech.core.dto import AllocationView, CancelOption, SaleInput, SaleRow
-from bejitech.core.enums import AllocationStatus, DeliveryNoteStatus, PaymentMethod, SaleStatus
+from bejitech.core.enums import AllocationStatus, DeliveryNoteStatus, EntryKind, PaymentMethod, SaleStatus
 from bejitech.core.errors import LicenseUnavailableError, NotFoundError, ValidationError
 from bejitech.core.money import per_unit_cost
 from bejitech.core.timeutil import parse_date, today_iso, utcnow_iso
-from bejitech.db.models import Customer, DeliveryNote, License, LicenseAllocation, Product, Sale, SaleItem
+from bejitech.db.models import (Customer, CustomerEntry, DeliveryNote, License, LicenseAllocation, Product,
+                                 Sale, SaleItem)
 from bejitech.security.masking import mask_key
+from bejitech.services.accounts_service import sale_account_summary
 from bejitech.services.common import audit, clean, get_setting, next_reference
 from bejitech.services.inventory_service import record_event
 
 
-def customer_snapshot(c: Customer) -> str:
-    return json.dumps({"name": c.full_name, "organization": c.organization, "phone": c.phone,
-                       "email": c.email, "address": c.address, "ref": c.customer_ref})
+def customer_snapshot(c: Customer, account: dict | None = None) -> str:
+    data = {"name": c.full_name, "organization": c.organization, "phone": c.phone,
+            "email": c.email, "address": c.address, "ref": c.customer_ref}
+    if account is not None:
+        data["account"] = account  # sale total, paid now, earlier balance, balance owed
+    return json.dumps(data)
 
 
 def seller_snapshot(s: Session) -> str:
@@ -41,6 +46,8 @@ class SalesService:
             raise ValidationError("Quantity must be at least 1.")
         if data.unit_price_minor < 0 or data.discount_minor < 0:
             raise ValidationError("Price and discount cannot be negative.")
+        if (data.paid_now_minor or 0) < 0:
+            raise ValidationError("The amount paid cannot be negative.")
         subtotal = data.quantity * data.unit_price_minor
         if data.discount_minor > subtotal:
             raise ValidationError("The discount cannot be larger than the subtotal.")
@@ -104,8 +111,17 @@ class SalesService:
                                 status=DeliveryNoteStatus.ISSUED, created_at=now)
             s.add(note)
             s.flush()
+            if data.paid_now_minor:
+                s.add(CustomerEntry(customer_id=customer.id, kind=EntryKind.PAYMENT,
+                                    amount_minor=data.paid_now_minor, entry_date=sale.sale_date,
+                                    method=data.payment_method, reference=clean(data.payment_reference),
+                                    note=f"Paid with {sale.sales_ref}", sale_id=sale.id,
+                                    created_by=self.ctx.user_id, created_at=now))
+                s.flush()
+            note.customer_snapshot = customer_snapshot(customer, sale_account_summary(s, sale))
             audit(s, self.ctx.user_id, "SALE_CREATED", "sale", sale.uuid, ref=sale.sales_ref,
-                  product=product.display_name, quantity=data.quantity, total=sale.total_minor)
+                  product=product.display_name, quantity=data.quantity, total=sale.total_minor,
+                  paid_now=data.paid_now_minor or 0)
             return sale.id
 
     # ---------- queries ----------

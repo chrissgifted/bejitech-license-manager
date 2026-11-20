@@ -57,3 +57,18 @@ class PaymentMethod(StrEnum):
 class DeliveryNoteStatus(StrEnum):
     ISSUED = "ISSUED"
     VOID = "VOID"
+
+
+class EntryKind(StrEnum):
+    OPENING_DEBT = "OPENING_DEBT"
+    PAYMENT = "PAYMENT"
+
+
+class PaymentState(StrEnum):
+    PAID = "PAID"
+    PARTLY_PAID = "PARTLY_PAID"
+    UNPAID = "UNPAID"
+
+    @property
+    def label(self) -> str:
+        return {"PAID": "Paid", "PARTLY_PAID": "Partly paid", "UNPAID": "Not paid"}[self.value]

@@ -173,3 +173,60 @@ def test_lifetime_keys_and_keys_with_an_expiry_date(client):
     inv = client.get("/inventory").text
     assert "Lifetime" in inv and "01 Nov 2027" in inv
     assert "2027-01-01" not in inv and "01 Jan 2027" not in inv
+
+
+def test_pay_later_sale_earlier_debt_and_payments(client):
+    setup_admin(client)
+    pid = product_id(client)
+    add_key(client, pid, "PAYLT-AAAAA-BBBBB-CCCCC-11111")
+    cid = add_customer(client, "Rehema Said")
+    # Earlier debt from before the app
+    page = client.get(f"/customers?id={cid}").text
+    r = client.post(f"/customers/{cid}/opening-debt", data={"csrf": csrf(page), "amount": "150,000",
+                                                            "date": "2026-10-01", "note": "Notebook balance"})
+    assert r.status_code == 303
+    # Sale on credit (pay later)
+    plan = client.get(f"/api/recommend?customer={cid}&product={pid}&qty=1").json()["options"][0]["plan"]
+    r = client.post("/sales/new", data={"csrf": token(client, "/sales/new"), "customer": cid, "product": pid,
+                                        "qty": "1", "price": "60,000", "discount": "0", "pay_status": "later",
+                                        "payment": "CASH", "sale_date": "2026-11-20", "plan": plan})
+    assert r.status_code == 303, re.findall(r'class="flash error[^>]*>([^<]+)', r.text)
+    sid = int(re.search(r"id=(\d+)", r.headers["location"]).group(1))
+    page = client.get(f"/sales?id={sid}").text
+    assert "TZS 210,000 in total" in page and "Not paid" in page
+    assert "TZS 210,000" in client.get("/").text  # dashboard: owed by customers
+    assert "Rehema Said" in client.get("/customers?owing=1").text
+    # Part payment, then mark the sale paid
+    page = client.get(f"/customers?id={cid}").text
+    assert "Notebook balance" in page and "TZS 210,000" in page
+    client.post(f"/customers/{cid}/payment", data={"csrf": csrf(page), "amount": "100,000", "date": "2026-11-21",
+                                                   "method": "MOBILE_MONEY", "reference": "MP-1"})
+    assert "TZS 110,000" in client.get(f"/customers?id={cid}").text
+    client.post(f"/sales/{sid}/mark-paid", data={"csrf": token(client, "/sales"), "date": "2026-11-22"})
+    page = client.get(f"/customers?id={cid}").text
+    assert "TZS 50,000" in page  # the sale is paid; 50,000 of the earlier debt is still owed
+    assert "Paid</span>" in page
+    client.post(f"/customers/{cid}/payment", data={"csrf": csrf(page), "amount": "50,000", "date": "2026-11-23",
+                                                   "method": "CASH"})
+    assert "Nobody owes you money" in client.get("/").text
+    # Void the last payment: the sale is owed again
+    eid = re.findall(r"/customers/entries/(\d+)/void", page)[-1]
+    client.post(f"/customers/entries/{eid}/void", data={"csrf": csrf(page), "reason": "Bounced"})
+    assert "Rehema Said" in client.get("/customers?owing=1").text
+    assert "Rehema Said" in client.get("/sales?paid=owed").text
+    assert "Rehema Said" not in client.get("/sales?paid=paid").text
+
+
+def test_part_payment_needs_an_amount(client):
+    setup_admin(client)
+    pid = product_id(client)
+    add_key(client, pid, "PARTP-AAAAA-BBBBB-CCCCC-22222")
+    cid = add_customer(client)
+    plan = client.get(f"/api/recommend?customer={cid}&product={pid}&qty=1").json()["options"][0]["plan"]
+    data = {"csrf": token(client, "/sales/new"), "customer": cid, "product": pid, "qty": "1", "price": "50,000",
+            "pay_status": "part", "paid_now": "", "payment": "CASH", "sale_date": "2026-11-20", "plan": plan}
+    r = client.post("/sales/new", data=data)
+    assert r.status_code == 400 and "amount the customer paid now" in r.text
+    data["paid_now"] = "20,000"
+    assert client.post("/sales/new", data=data).status_code == 303
+    assert "Partly paid" in client.get("/sales").text

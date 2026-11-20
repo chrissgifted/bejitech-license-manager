@@ -81,6 +81,7 @@ class WebState:
     def reset_database(self) -> None:
         """After a restore replaced the database file: reconnect and forget the cached cipher."""
         self.db.dispose()
+        migrate(self.paths.database_target, self.paths.backups)  # an older backup may need new tables
         self.db = Database(self.paths.database_target)
         self._cipher = None
 

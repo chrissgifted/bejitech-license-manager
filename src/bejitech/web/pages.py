@@ -75,6 +75,7 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
         "state_label": lambda v: StockState(v).label if v in StockState.__members__ else v,
         "money_input": _money_input, "quote": quote,
         "expiry_label": lambda v: display_date(v) if v else "Lifetime",
+        "abs": abs,
     }
 
     def page(request: Request, name: str, status: int = 200, **kw) -> HTMLResponse:
@@ -103,8 +104,13 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
         ctx = ctx_of(request)
         period = period if period in PERIODS else "all"
         d = ctx.reports.dashboard(*period_range(period))
+        balances = ctx.accounts.balances()
+        owing = sorted(((b, cid) for cid, b in balances.items() if b > 0), reverse=True)[:8]
+        names = {c.id: c.full_name for c in ctx.customers.list(include_archived=True)}
         return page(request, "dashboard.html", d=d, sales=ctx.sales.list_sales()[:12], periods=PERIODS,
-                    period=period, today=today_iso())
+                    period=period, today=today_iso(), owed=sum(b for b in balances.values() if b > 0),
+                    debtors=[(names.get(cid, "?"), cid, b) for b, cid in owing],
+                    pay=ctx.accounts.sale_states())
 
     # ======================= Software products =======================
     @app.get("/products", response_class=HTMLResponse)
@@ -351,16 +357,21 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
 
     # ======================= Customers =======================
     @app.get("/customers", response_class=HTMLResponse)
-    def customers(request: Request, q: str = "", archived: int = 0, id: int = 0):
+    def customers(request: Request, q: str = "", archived: int = 0, id: int = 0, owing: int = 0):
         ctx = ctx_of(request)
         rows = ctx.customers.list(search=q.strip(), include_archived=bool(archived))
-        sel = hist = None
+        balances = ctx.accounts.balances()
+        if owing:
+            rows = [r for r in rows if balances.get(r.id, 0) > 0]
+        sel = hist = acc = None
         if id:
             try:
-                sel, hist = ctx.customers.get(id), ctx.customers.history(id)
+                sel, hist, acc = ctx.customers.get(id), ctx.customers.history(id), ctx.accounts.account(id)
             except BejitechError:
                 sel = None
-        return page(request, "customers.html", rows=rows, q=q, archived=archived, sel=sel, hist=hist)
+        return page(request, "customers.html", rows=rows, q=q, archived=archived, sel=sel, hist=hist, acc=acc,
+                    balances=balances, owing=owing, total_owed=sum(b for b in balances.values() if b > 0),
+                    methods=[(m.value, m.label) for m in PaymentMethod], today=today_iso())
 
     def customer_form_view(request, cust=None, form=None, error=None, status=200, next_url=""):
         return page(request, "customer_form.html", status=status, cust=cust, form=form or {}, error=error,
@@ -409,13 +420,71 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
             flash(request, str(exc), "error")
         return go("/customers")
 
+    # ---------- customer accounts ----------
+    def back_to(f, fallback: str) -> RedirectResponse:
+        nxt = str(f.get("next", ""))
+        return go(nxt if nxt.startswith("/") and not nxt.startswith("//") else fallback)
+
+    @app.post("/customers/{cid}/payment")
+    async def customer_payment(request: Request, cid: int):
+        ctx = ctx_of(request)
+        f = await posted(request)
+        try:
+            amount = to_minor(f.get("amount", ""), "TZS")
+            ctx.accounts.record_payment(cid, amount, str(f.get("date", "")), str(f.get("method", "CASH")),
+                                        str(f.get("reference", "")), str(f.get("note", "")))
+            flash(request, f"Payment of {format_money(amount)} recorded. Balance owed now: "
+                           f"{format_money(ctx.accounts.balance(cid))}.")
+        except BejitechError as exc:
+            flash(request, str(exc), "error")
+        return back_to(f, f"/customers?id={cid}")
+
+    @app.post("/customers/{cid}/opening-debt")
+    async def customer_opening_debt(request: Request, cid: int):
+        ctx = ctx_of(request)
+        f = await posted(request)
+        try:
+            amount = to_minor(f.get("amount", ""), "TZS")
+            ctx.accounts.add_opening_debt(cid, amount, str(f.get("date", "")), str(f.get("note", "")))
+            flash(request, f"Earlier debt of {format_money(amount)} added. Balance owed now: "
+                           f"{format_money(ctx.accounts.balance(cid))}.")
+        except BejitechError as exc:
+            flash(request, str(exc), "error")
+        return back_to(f, f"/customers?id={cid}")
+
+    @app.post("/customers/entries/{eid}/void")
+    async def customer_entry_void(request: Request, eid: int):
+        ctx = ctx_of(request)
+        f = await posted(request)
+        try:
+            ctx.accounts.void_entry(eid, str(f.get("reason", "")))
+            flash(request, "Entry cancelled. It stays on the statement, crossed out.")
+        except BejitechError as exc:
+            flash(request, str(exc), "error")
+        return back_to(f, "/customers")
+
+    @app.post("/sales/{sid}/mark-paid")
+    async def sale_mark_paid(request: Request, sid: int):
+        ctx = ctx_of(request)
+        f = await posted(request)
+        try:
+            if ctx.accounts.pay_sale_in_full(sid, str(f.get("date", "")) or None, str(f.get("method", "")) or None,
+                                             str(f.get("reference", ""))) is None:
+                flash(request, "Nothing is owed on this sale.")
+            else:
+                flash(request, "Payment recorded: the sale is now fully paid.")
+        except BejitechError as exc:
+            flash(request, str(exc), "error")
+        return back_to(f, f"/sales?id={sid}")
+
     # ======================= New sale =======================
     @app.get("/sales/new", response_class=HTMLResponse)
     def sale_new(request: Request, customer: int = 0, product: int = 0):
         ctx = ctx_of(request)
         return page(request, "new_sale.html", customers=ctx.customers.list(),
                     products=ctx.catalogue.list_products(), customer=customer, product=product,
-                    methods=[(m.value, m.label) for m in PaymentMethod], today=today_iso(), form={}, error=None)
+                    methods=[(m.value, m.label) for m in PaymentMethod], today=today_iso(), form={}, error=None,
+                    balances=ctx.accounts.balances())
 
     @app.get("/api/recommend")
     def api_recommend(request: Request, customer: int = 0, product: int = 0, qty: int = 1):
@@ -460,33 +529,48 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
                 plan = [(int(a), int(b)) for a, b in (x.split(":") for x in plan_text.split(",") if x)]
             if not plan:
                 raise ValidationError("Please choose which licence key to use.")
+            unit = to_minor(f.get("price", ""), "TZS")
+            disc = to_minor(f.get("discount", ""), "TZS")
+            total_due = _int(f.get("qty"), 1) * unit - disc
+            pay_status = str(f.get("pay_status", "full"))
+            if pay_status == "later":
+                paid_now = 0
+            elif pay_status == "part":
+                paid_now = to_minor(f.get("paid_now", ""), "TZS")
+                if paid_now <= 0:
+                    raise ValidationError("Enter the amount the customer paid now, or choose Not paid yet.")
+            else:
+                paid_now = max(total_due, 0)
             sale_id = ctx.sales.create_sale(SaleInput(
                 customer_id=customer_id, product_id=product_id, quantity=_int(f.get("qty"), 1),
                 unit_price_minor=to_minor(f.get("price", ""), "TZS"),
                 discount_minor=to_minor(f.get("discount", ""), "TZS"),
                 payment_method=str(f.get("payment", "MOBILE_MONEY")),
                 payment_reference=str(f.get("pay_ref", "")), sale_date=str(f.get("sale_date") or today_iso()),
-                notes=str(f.get("notes", "")), plan=plan))
+                notes=str(f.get("notes", "")), plan=plan, paid_now_minor=paid_now))
         except (BejitechError, ValueError) as exc:
             return page(request, "new_sale.html", status=400, customers=ctx.customers.list(),
                         products=ctx.catalogue.list_products(), customer=_int(f.get("customer")),
                         product=_int(f.get("product")), methods=[(m.value, m.label) for m in PaymentMethod],
-                        today=today_iso(), form=dict(f), error=str(exc))
+                        today=today_iso(), form=dict(f), error=str(exc), balances=ctx.accounts.balances())
         sale = ctx.sales.get_sale(sale_id)
         try:
             ctx.delivery_notes.generate_for_sale(sale_id)
             note = f"Delivery note {sale.delivery_note_number} created."
         except BejitechError:
             note = "The delivery note could not be generated; open Delivery Notes to retry."
+        owed = ctx.accounts.balance(sale.customer_id)
         flash(request, f"{sale.sales_ref} saved: {sale.customer_name}, {sale.product_names} × {sale.quantity}, "
-                       f"{format_money(sale.total_minor)}. {note}")
+                       f"{format_money(sale.total_minor)}. {note} "
+                       + (f"{sale.customer_name} now owes {format_money(owed)} in total." if owed > 0
+                          else "Fully paid."))
         return go(f"/sales?id={sale_id}")
 
     # ======================= Sales history =======================
     def sales_filters(request: Request) -> dict:
         qp = request.query_params
         return {"q": qp.get("q", ""), "status": qp.get("status", ""), "payment": qp.get("payment", ""),
-                "date_from": qp.get("from", ""), "date_to": qp.get("to", "")}
+                "date_from": qp.get("from", ""), "date_to": qp.get("to", ""), "paid": qp.get("paid", "")}
 
     def sales_rows(ctx, flt):
         return ctx.sales.list_sales(search=flt["q"].strip(), date_from=flt["date_from"] or None,
@@ -498,15 +582,24 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
         ctx = ctx_of(request)
         flt = sales_filters(request)
         rows = sales_rows(ctx, flt)
+        pay = ctx.accounts.sale_states({r.customer_id for r in rows})
+        if flt["paid"] == "owed":
+            rows = [r for r in rows if r.id in pay and pay[r.id].due_minor > 0]
+        elif flt["paid"] == "paid":
+            rows = [r for r in rows if r.id in pay and pay[r.id].due_minor <= 0]
         sel = None
         if id:
             try:
                 sel = ctx.sales.get_sale(id)
             except BejitechError:
                 sel = None
+        if sel and sel.customer_id not in {r.customer_id for r in rows}:
+            pay.update(ctx.accounts.sale_states({sel.customer_id}))
         qs = urlencode({k: v for k, v in (("q", flt["q"]), ("status", flt["status"]), ("payment", flt["payment"]),
-                                          ("from", flt["date_from"]), ("to", flt["date_to"])) if v})
-        return page(request, "sales.html", rows=rows, flt=flt, sel=sel, query=qs,
+                                          ("from", flt["date_from"]), ("to", flt["date_to"]), ("paid", flt["paid"]))
+                        if v})
+        return page(request, "sales.html", rows=rows, flt=flt, sel=sel, query=qs, pay=pay, today=today_iso(),
+                    owed=sum(pay[r.id].due_minor for r in rows if r.id in pay and pay[r.id].due_minor > 0),
                     methods=[(m.value, m.label) for m in PaymentMethod],
                     total=sum(r.total_minor for r in rows if r.status == "COMPLETED"))
 
@@ -705,7 +798,7 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
     SETTING_FIELDS = {
         "business": ["seller.name", "seller.business_name", "seller.phone", "seller.email", "seller.address"],
         "sales": ["currency.usd_rate", "inventory.default_low_stock"],
-        "delivery": ["delivery.include_signature", "delivery.footer"],
+        "delivery": ["delivery.include_signature", "delivery.show_balance", "delivery.footer"],
         "security": ["security.autolock_minutes"],
     }
 
@@ -716,7 +809,7 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
         tab = str(f.get("tab", "business"))
         values = {}
         for key in SETTING_FIELDS.get(tab, []):
-            if key == "delivery.include_signature":
+            if key in ("delivery.include_signature", "delivery.show_balance"):
                 values[key] = "1" if f.get(key) else "0"
             else:
                 values[key] = str(f.get(key, ""))

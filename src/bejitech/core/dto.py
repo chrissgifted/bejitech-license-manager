@@ -196,6 +196,7 @@ class SaleInput:
     payment_reference: str | None = None
     notes: str | None = None
     plan: list[tuple[int, int]] | None = None  # [(license_id, qty)], None → recommended
+    paid_now_minor: int = 0  # money received with the sale; the rest is owed (pay later)
 
 
 @dataclass

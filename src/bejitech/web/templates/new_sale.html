@@ -12,7 +12,7 @@
       <div class="input-row">
         <select name="customer" required data-customer>
           <option value="">Choose a customer…</option>
-          {% for c in customers %}<option value="{{ c.id }}" data-info="{{ c.customer_ref }} · {{ c.purchases }} previous purchase(s)" {{ 'selected' if c.id == customer }}>{{ c.label }}</option>{% endfor %}
+          {% for c in customers %}<option value="{{ c.id }}" data-info="{{ c.customer_ref }} · {{ c.purchases }} previous purchase(s){% set b = balances.get(c.id, 0) %}{% if b > 0 %} · owes {{ format_money(b) }}{% elif b < 0 %} · credit {{ format_money(-b) }}{% endif %}" data-balance="{{ balances.get(c.id, 0) }}" {{ 'selected' if c.id == customer }}>{{ c.label }}</option>{% endfor %}
         </select>
         <a class="btn" href="/customers/new?next=/sales/new">+ New customer</a>
       </div>
@@ -42,6 +42,17 @@
         <label>Unit price (TZS)<input name="price" inputmode="numeric" data-amount="0" value="{{ form.price or '' }}" class="num-input" data-price></label>
         <label>Discount (TZS)<input name="discount" inputmode="numeric" data-amount="0" value="{{ form.discount or '' }}" placeholder="0" class="num-input" data-discount></label>
         <div class="total-row"><span>Total</span><strong data-total>TZS 0</strong></div>
+        <label>Payment now<select name="pay_status" data-pay-status>
+          <option value="full" {{ 'selected' if (form.pay_status or 'full') == 'full' }}>Paid in full now</option>
+          <option value="part" {{ 'selected' if form.pay_status == 'part' }}>Part payment now</option>
+          <option value="later" {{ 'selected' if form.pay_status == 'later' }}>Not paid yet (pay later)</option>
+        </select></label>
+        <label data-paid-row {{ 'hidden' if form.pay_status != 'part' }}>Amount paid now (TZS)<input name="paid_now" inputmode="numeric" data-amount="0" value="{{ form.paid_now or '' }}" class="num-input" data-paid></label>
+        <div class="owed-box" data-owed-box hidden>
+          <div><span>Earlier balance</span><strong data-owed-before></strong></div>
+          <div><span>Owed for this sale</span><strong data-owed-sale></strong></div>
+          <div class="owed-total"><span>Customer will owe in total</span><strong data-owed-after></strong></div>
+        </div>
         <label>Payment method<select name="payment">
           {% for v, l in methods %}<option value="{{ v }}" {{ 'selected' if (form.payment or 'MOBILE_MONEY') == v }}>{{ l }}</option>{% endfor %}
         </select></label>

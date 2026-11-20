@@ -311,6 +311,25 @@ class DeliveryNote(Base):
     sale: Mapped[Sale] = relationship()
 
 
+class CustomerEntry(Base):
+    """A line on a customer's account: an earlier debt (OPENING_DEBT) or money received (PAYMENT)."""
+    __tablename__ = "customer_entries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    uuid: Mapped[str] = mapped_column(String, default=new_uuid, unique=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
+    kind: Mapped[str] = mapped_column(String)
+    amount_minor: Mapped[int] = mapped_column(Integer)
+    entry_date: Mapped[str] = mapped_column(String)
+    method: Mapped[str | None] = mapped_column(String)
+    reference: Mapped[str | None] = mapped_column(String)
+    note: Mapped[str | None] = mapped_column(Text)
+    sale_id: Mapped[int | None] = mapped_column(ForeignKey("sales.id"))
+    is_void: Mapped[int] = mapped_column(Integer, default=0)
+    void_reason: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[str] = mapped_column(String)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
     id: Mapped[int] = mapped_column(primary_key=True)
