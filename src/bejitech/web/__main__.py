@@ -24,7 +24,12 @@ def main(argv: list[str]) -> int:
     if cmd == "serve":
         import uvicorn
         local = os.environ.get("BEJITECH_LOCAL_MODE", "0") == "1"
+        reload = os.environ.get("BEJITECH_RELOAD", "0") == "1"
+        src_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         uvicorn.run("bejitech.web.main:create_app", factory=True, host=os.environ.get("HOST", "127.0.0.1"),
+                    # Local runs: restart by itself within a second or two whenever a file changes
+                    reload=reload, reload_dirs=[src_dir] if reload else None,
+                    reload_includes=["*.py", "*.html", "*.css", "*.sql"] if reload else None,
                     port=int(os.environ.get("PORT", "8000")),
                     # Behind the hosting service's proxy the real client address is in the headers;
                     # on your own computer there is no proxy, so the headers are not trusted.

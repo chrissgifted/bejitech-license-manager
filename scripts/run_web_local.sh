@@ -32,7 +32,7 @@ fi
 # shellcheck disable=SC1091
 source .venv-web/bin/activate
 pip install -q --upgrade pip >/dev/null
-pip install -q -r requirements-web.txt
+pip install -q -r requirements-web.txt watchfiles
 
 export PYTHONPATH=src
 if [ ! -f "$DATA/web.env" ]; then
@@ -44,7 +44,7 @@ set -a
 # shellcheck disable=SC1091
 source "$DATA/web.env"
 set +a
-export BEJITECH_DATA_DIR="$DATA" BEJITECH_COOKIE_SECURE=0 BEJITECH_LOCAL_MODE=1 PORT
+export BEJITECH_DATA_DIR="$DATA" BEJITECH_COOKIE_SECURE=0 BEJITECH_LOCAL_MODE=1 BEJITECH_RELOAD=1 PORT
 export TZ="${TZ:-Africa/Dar_es_Salaam}"
 
 if [ "${LOCAL_ONLY:-0}" = "1" ]; then
@@ -68,6 +68,7 @@ if [ "$HOST" = "0.0.0.0" ] && [ -n "$IP" ]; then
 fi
 echo "  Setup code (first time only, and only if you set up from another device): $BEJITECH_SETUP_TOKEN"
 echo "  Data folder:        $DATA"
+echo "Changes to the app are picked up by themselves: just refresh the page."
 echo "Leave this window open while you use it. Press Ctrl+C to stop."
 echo
 exec python -m bejitech.web serve
