@@ -94,7 +94,7 @@
   </section>
   {% endif %}
   <h3>Account statement</h3>
-  <div class="table-wrap"><table class="data stackable compact">
+  <div class="table-wrap pops"><table class="data stackable compact">
     <thead><tr><th>Date</th><th>Description</th><th class="num">Charged</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr></thead>
     {% set n_void = acc.lines | selectattr('is_void') | list | length %}
     <tbody>{% for l in acc.lines if voided or not l.is_void %}

@@ -131,6 +131,8 @@ body.app { display: block; }
 /* ---------- tables ---------- */
 .table-wrap { overflow: auto; }
 .table-wrap.tall { max-height: 62vh; }
+/* Tables with Edit…/Void… pop-ups must not clip them (the last row's pop-up was cut off) */
+.table-wrap.pops { overflow: visible; }
 table.data { width: 100%; border-collapse: collapse; }
 table.data th { position: sticky; top: 0; z-index: 1; background: var(--soft); text-align: left; color: var(--muted);
   font-weight: 600; font-size: 12px; padding: 9px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
