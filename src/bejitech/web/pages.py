@@ -26,7 +26,7 @@ from bejitech.security.keystore import EnvFileKeyStore, EnvKeyStore
 PLATFORMS = ["Windows", "macOS", "Windows & macOS", "Linux", "Cross-platform", "Android", "iOS"]
 REPORTS = [("inventory", "Inventory"), ("sales", "Sales"), ("customers", "Customers"),
            ("activations", "Activation balances"), ("profit", "Profit")]
-PERIODS = {"all": "All time", "month": "This month", "30d": "Last 30 days", "year": "This year"}
+PERIODS = {"30d": "Last 30 days", "month": "This month", "year": "This year", "all": "All time"}
 STATES = [("", "All")] + [(s.value, s.label) for s in StockState]
 SETTINGS_TABS = [("business", "Business"), ("sales", "Sales & currency"), ("types", "Licence types"),
                  ("delivery", "Delivery notes"), ("security", "Security"), ("audit", "Audit log"),
@@ -100,17 +100,18 @@ def register(app: FastAPI, ui) -> None:  # noqa: C901 - one place for all screen
 
     # ======================= Dashboard =======================
     @app.get("/", response_class=HTMLResponse)
-    def dashboard(request: Request, period: str = "all"):
+    def dashboard(request: Request, period: str = "30d"):
+        from bejitech.web import analytics
         ctx = ctx_of(request)
-        period = period if period in PERIODS else "all"
-        d = ctx.reports.dashboard(*period_range(period))
+        period = period if period in PERIODS else "30d"
+        rng = period_range(period)
+        d = ctx.reports.dashboard(*rng)
         balances = ctx.accounts.balances()
-        owing = sorted(((b, cid) for cid, b in balances.items() if b > 0), reverse=True)[:8]
+        owing = sorted(((b, cid) for cid, b in balances.items() if b > 0), reverse=True)[:6]
         names = {c.id: c.full_name for c in ctx.customers.list(include_archived=True)}
-        return page(request, "dashboard.html", d=d, sales=ctx.sales.list_sales()[:12], periods=PERIODS,
-                    period=period, today=today_iso(), owed=sum(b for b in balances.values() if b > 0),
-                    debtors=[(names.get(cid, "?"), cid, b) for b, cid in owing],
-                    pay=ctx.accounts.sale_states())
+        return page(request, "dashboard.html", d=d, a=analytics.build(ctx, *rng), sales=ctx.sales.list_sales()[:8],
+                    periods=PERIODS, period=period, today=today_iso(),
+                    debtors=[(names.get(cid, "?"), cid, b) for b, cid in owing], pay=ctx.accounts.sale_states())
 
     # ======================= Software products =======================
     @app.get("/products", response_class=HTMLResponse)

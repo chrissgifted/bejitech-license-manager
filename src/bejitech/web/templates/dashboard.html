@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 {% from "_macros.html" import head %}
+{% macro delta(v, label) -%}
+  {%- if v is not none -%}
+  <span class="delta {{ 'up' if v >= 0 else 'down' }}">{{ '▲' if v >= 0 else '▼' }} {{ '%.0f' | format(v | abs) }}%</span> <span class="muted">{{ label }}</span>
+  {%- endif -%}
+{%- endmacro %}
 {% block title %}Dashboard · Bejitech{% endblock %}
 {% block content %}
-{% call head("Dashboard", display_date(today)) %}
+{% call head("Dashboard", display_date(today) ~ " · " ~ periods[period]) %}
   <form method="get" action="/" class="inline-form">
-    <label for="period" class="muted small">Sales period</label>
+    <label for="period" class="muted small">Period</label>
     <select id="period" name="period" data-autosubmit>
       {% for k, v in periods.items() %}<option value="{{ k }}" {{ 'selected' if k == period }}>{{ v }}</option>{% endfor %}
     </select>
@@ -12,44 +17,133 @@
   </form>
   <a class="btn primary" href="/sales/new">+ New sale</a>
 {% endcall %}
+{% set vs = "vs previous " ~ ("30 days" if period == "30d" else "period") %}
 
-<section class="stats">
-  <div class="stat"><span>Products</span><strong>{{ "{:,}".format(d.total_products) }}</strong></div>
-  <div class="stat"><span>Purchased keys</span><strong>{{ "{:,}".format(d.total_keys) }}</strong></div>
-  <div class="stat {{ 'warn' if d.low_stock }}"><span>Available activations</span><strong>{{ "{:,}".format(d.available_activations) }}</strong></div>
-  <div class="stat"><span>Allocated activations</span><strong>{{ "{:,}".format(d.allocated_activations) }}</strong></div>
-  <div class="stat"><span>Fully allocated keys</span><strong>{{ "{:,}".format(d.fully_allocated_keys) }}</strong></div>
-  <div class="stat"><span>Customers</span><strong>{{ "{:,}".format(d.total_customers) }}</strong></div>
-  <div class="stat"><span>Sales</span><strong>{{ "{:,}".format(d.total_sales) }}</strong></div>
-  <div class="stat"><span>Revenue</span><strong>{{ format_money(d.revenue) }}</strong></div>
-  <div class="stat"><span>Purchase costs</span><strong>{{ format_money(d.purchase_costs) }}</strong></div>
-  <div class="stat {{ 'good' if d.gross_profit >= 0 else 'bad' }}"><span>Gross profit</span><strong>{{ format_money(d.gross_profit) }}</strong></div>
-  <a class="stat {{ 'bad' if owed else 'good' }}" href="/customers?owing=1"><span>Owed by customers</span><strong>{{ format_money(owed) }}</strong></a>
+<section class="kpis">
+  <div class="kpi hero">
+    <span class="kpi-label">Revenue</span>
+    <strong class="kpi-value">{{ format_money(a.revenue) }}</strong>
+    <span class="kpi-foot">{{ delta(a.revenue_change, vs) if a.has_compare else '' }}{% if not a.has_compare or a.revenue_change is none %}{{ a.sales }} sale(s){% endif %}</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Gross profit</span>
+    <strong class="kpi-value {{ 'good' if a.profit >= 0 else 'bad' }}">{{ format_money(a.profit) }}</strong>
+    <span class="kpi-foot">{% if a.margin is not none %}{{ a.margin }}% margin{% endif %} {{ delta(a.profit_change, '') if a.has_compare else '' }}</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Sales</span>
+    <strong class="kpi-value">{{ "{:,}".format(a.sales) }}</strong>
+    <span class="kpi-foot">Average {{ format_money(a.avg_sale) }} {{ delta(a.sales_change, '') if a.has_compare else '' }}</span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">Cash collected</span>
+    <strong class="kpi-value">{{ format_money(a.collected) }}</strong>
+    <span class="kpi-foot">Payments received in this period</span>
+  </div>
+  <a class="kpi {{ 'alert' if a.owed }}" href="/customers?owing=1">
+    <span class="kpi-label">Owed by customers</span>
+    <strong class="kpi-value {{ 'bad' if a.owed else 'good' }}">{{ format_money(a.owed) }}</strong>
+    <span class="kpi-foot">{{ a.debtors }} customer(s) · all time</span>
+  </a>
 </section>
 
-<div class="split">
-  <div class="side-col">
-  <section class="card">
-    <h2>Low-stock alerts</h2>
-    {% if d.low_stock %}
-    <ul class="alerts">
-      {% for a in d.low_stock %}<li><a href="/inventory?product={{ a.product_id }}"><strong>⚠ {{ a.display_name }}</strong></a><span>{{ a.available_activations }} available (alert below {{ a.low_stock_threshold }})</span></li>{% endfor %}
-    </ul>
-    {% else %}<p class="ok">✓ All products are above their low-stock level.</p>{% endif %}
+<div class="dash-grid">
+  <section class="card chart-card wide">
+    <div class="card-head">
+      <div><h2>Sales over the last 12 months</h2><p class="muted small">Revenue per month · {{ format_money(a.trend_total) }} in total. Hover a bar for details.</p></div>
+    </div>
+    {% if a.trend_total %}
+    <div class="columns" role="img" aria-label="Revenue per month for the last 12 months">
+      {% for t in a.trend %}
+      <div class="col {{ 'now' if t.current }}" tabindex="0">
+        <svg class="col-track" viewBox="0 0 10 100" preserveAspectRatio="none" aria-hidden="true"><rect class="col-bar" x="1.5" y="{{ 100 - t.pct }}" width="7" height="{{ t.pct if t.pct > 0.8 else (0.8 if t.revenue else 0) }}"/></svg>
+        <span class="col-label">{{ t.label }}</span>
+        <div class="tip"><strong>{{ t.label }} {{ t.year }}</strong><br>Revenue {{ format_money(t.revenue) }}<br>Profit {{ format_money(t.profit) }}<br>{{ t.count }} sale(s)</div>
+      </div>
+      {% endfor %}
+    </div>
+    <details class="table-toggle"><summary class="muted small">Show as a table</summary>
+      <table class="data compact"><thead><tr><th>Month</th><th class="num">Revenue</th><th class="num">Profit</th><th class="num">Sales</th></tr></thead>
+        <tbody>{% for t in a.trend %}<tr><td>{{ t.label }} {{ t.year }}</td><td class="num">{{ format_money(t.revenue) }}</td><td class="num">{{ format_money(t.profit) }}</td><td class="num">{{ t.count }}</td></tr>{% endfor %}</tbody></table>
+    </details>
+    {% else %}<p class="muted empty">No sales yet. <a href="/sales/new">Make the first sale</a>.</p>{% endif %}
   </section>
+
+  <section class="card chart-card">
+    <h2>Money collected vs owed</h2>
+    <p class="muted small">All payments received compared with what customers still owe.</p>
+    {% set c = a.collection %}
+    <div class="donut" role="img" aria-label="{{ c.paid_pct }} percent collected">
+      <svg viewBox="0 0 42 42" aria-hidden="true">
+        <circle cx="21" cy="21" r="15.915" fill="none" class="ring-owed" stroke-width="6"/>
+        <circle cx="21" cy="21" r="15.915" fill="none" class="ring-paid" stroke-width="6" stroke-dasharray="{{ c.paid_pct }} {{ 100 - c.paid_pct }}" stroke-dashoffset="25"/>
+      </svg>
+      <div class="donut-hole"><strong>{{ c.paid_pct }}%</strong><span>collected</span></div>
+    </div>
+    <ul class="legend">
+      <li><i class="sw paid"></i> Collected <strong>{{ format_money(c.paid) }}</strong></li>
+      <li><i class="sw owed"></i> Still owed <strong>{{ format_money(c.owed) }}</strong></li>
+    </ul>
+  </section>
+
+  <section class="card chart-card">
+    <h2>Top products</h2>
+    <p class="muted small">By revenue · {{ periods[period] | lower }}</p>
+    {% if a.top_products %}
+    <ul class="hbars">
+      {% for x in a.top_products %}
+      <li title="{{ x.name }}: {{ format_money(x.revenue) }} · {{ x.units }} activation(s) · {{ x.share }}% of revenue">
+        <div class="hbar-text"><span>{{ x.name }}</span><strong>{{ format_money(x.revenue) }}</strong></div>
+        <svg class="hbar-track" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><rect class="hbar" width="{{ x.pct if x.pct > 1 else 1 }}" height="8"/></svg>
+        <span class="muted small">{{ x.units }} activation(s) · {{ x.share }}% of revenue</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">No sales in this period.</p>{% endif %}
+  </section>
+
+  <section class="card chart-card">
+    <h2>Stock left</h2>
+    <p class="muted small">Available activations per product</p>
+    <ul class="hbars">
+      {% for x in a.stock %}
+      <li title="{{ x.name }}: {{ x.available }} available across {{ x.key_count }} key(s)">
+        <div class="hbar-text"><a href="/inventory?product={{ x.id }}">{{ x.name }}</a><strong class="{{ 'bad' if x.low }}">{% if x.low %}⚠ {% endif %}{{ x.available }}</strong></div>
+        <svg class="hbar-track" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><rect class="hbar {{ 'low' if x.low }}" width="{{ x.pct if x.available else 0 }}" height="8"/></svg>
+      </li>
+      {% else %}<li class="muted">No products yet.</li>{% endfor %}
+    </ul>
+    {% if d.low_stock %}<p class="small warn-text">⚠ {{ d.low_stock | length }} product(s) below their low-stock level. <a href="/inventory/new">Add keys</a></p>{% endif %}
+  </section>
+
+  <section class="card span2">
+    <h2>Best customers</h2>
+    <p class="muted small">By revenue · {{ periods[period] | lower }}</p>
+    {% if a.top_customers %}
+    <div class="table-wrap"><table class="data compact">
+      <thead><tr><th>Customer</th><th class="num">Sales</th><th class="num">Revenue</th><th class="num">Owes</th></tr></thead>
+      <tbody>{% for x in a.top_customers %}
+        <tr data-href="/customers?id={{ x.id }}"><td><a href="/customers?id={{ x.id }}">{{ x.name }}</a></td><td class="num">{{ x.sales }}</td>
+          <td class="num">{{ format_money(x.revenue) }}</td><td class="num">{% if x.balance > 0 %}<span class="owes">{{ format_money(x.balance) }}</span>{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="muted">No sales in this period.</p>{% endif %}
+  </section>
+
   <section class="card">
     <h2>Customers who owe money</h2>
+    <p class="muted small">Biggest balances first</p>
     {% if debtors %}
     <ul class="alerts">
-      {% for name, cid, b in debtors %}<li><a href="/customers?id={{ cid }}#detail"><strong>{{ name }}</strong></a><span class="owes">{{ format_money(b) }}</span> · <a class="small" href="/customers?id={{ cid }}#reminder">Send reminder</a></li>{% endfor %}
+      {% for name, cid, b in debtors %}<li><a href="/customers?id={{ cid }}#detail"><strong>{{ name }}</strong></a><span><span class="owes">{{ format_money(b) }}</span> · <a class="small" href="/customers?id={{ cid }}#reminder">Send reminder</a></span></li>{% endfor %}
     </ul>
     {% else %}<p class="ok">✓ Nobody owes you money.</p>{% endif %}
   </section>
-  </div>
-  <section class="card grow">
-    <h2>Recent sales</h2>
+
+  <section class="card wide">
+    <div class="card-head"><h2>Recent sales</h2><a class="btn small" href="/sales">All sales</a></div>
     {% if sales %}
-    <div class="table-wrap"><table class="data stackable">
+    <div class="table-wrap"><table class="data stackable compact">
       <thead><tr><th>Ref</th><th>Date</th><th>Customer</th><th>Product</th><th class="num">Qty</th><th class="num">Total</th><th>Paid?</th></tr></thead>
       <tbody>{% for s in sales %}
         <tr data-href="/sales?id={{ s.id }}"><td class="nowrap" data-label="Ref"><a href="/sales?id={{ s.id }}">{{ s.sales_ref }}</a></td><td class="nowrap" data-label="Date">{{ display_date(s.sale_date) }}</td>
@@ -62,5 +156,6 @@
     {% else %}<p class="muted">No sales yet. <a href="/sales/new">Make the first sale</a>.</p>{% endif %}
   </section>
 </div>
-<p class="muted small">Gross profit = revenue − cost of the activations sold. Purchase costs = money spent on keys bought in the period.</p>
+<p class="muted small">Inventory: {{ "{:,}".format(d.total_products) }} products · {{ "{:,}".format(d.total_keys) }} keys · {{ "{:,}".format(d.available_activations) }} activations available · {{ "{:,}".format(d.allocated_activations) }} sold.
+  Gross profit = revenue − cost of the activations sold.</p>
 {% endblock %}
